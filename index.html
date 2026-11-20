@@ -5,16 +5,7 @@
 <title>Conteggio magazzino</title>
 <style>
   body { font-family: system-ui, sans-serif; margin: 0 auto; padding: 12px; max-width: 520px; }
-  /* Anteprima piccola apposta: a tutto schermo si avvicinava il codice per riempirla e si andava sotto la distanza
-     minima di messa a fuoco (prova di Luca con "sito desktop"). Forma orizzontale fissa fin dal caricamento:
-     object-fit: cover mostra la fascia centrale dell'immagine. Il riquadro rosso serve solo a mirare: si legge
-     tutta l'anteprima (FASCIA nello script) e vale il codice più vicino al centro */
-  #mirino { position: relative; width: 100%; max-width: 420px; aspect-ratio: 16 / 10; margin: 8px auto 0;
-            border-radius: 8px; overflow: hidden; background: #000; }
-  #video { display: block; width: 100%; height: 100%; object-fit: cover; }
-  #distanza { text-align: center; font-size: 14px; color: #555; margin-top: 4px; }
-  #mirino::after { content: ''; position: absolute; left: 25%; width: 50%; top: 35%; height: 30%; box-sizing: border-box;
-                   border: 3px solid #ef4444; border-radius: 6px; pointer-events: none; }
+  #pronto { margin-top: 8px; padding: 16px; border-radius: 8px; background: #dcfce7; color: #166534; font-size: 18px; text-align: center; }
   input, button { font-size: 18px; padding: 12px; width: 100%; box-sizing: border-box; margin-top: 8px; border-radius: 8px; border: 1px solid #ccc; }
   #annulla { background: #b91c1c; color: #fff; border: 0; }
   #annulla:disabled { background: #ddd; color: #888; }
@@ -27,22 +18,16 @@
 </head>
 <body>
   <input id="operatore" placeholder="Nome operatore">
-  <div id="mirino"><video id="video" playsinline muted autoplay></video></div>
-  <div id="distanza">Punta il riquadro rosso sul codice. Se è sfocato, allontana un po' il telefono</div>
-  <div id="errore" style="color:#b91c1c;font-size:14px"></div>
-  <label id="foto" style="display:none">
-    <span style="display:block;text-align:center;background:#1d4ed8;color:#fff;padding:14px;border-radius:8px;margin-top:8px;font-size:18px">📷 Scatta foto del codice</span>
-    <input id="fotoInput" type="file" accept="image/*" capture="environment" style="display:none">
-  </label>
-  <input id="manuale" placeholder="Lettore barcode o codice + Invio" autocomplete="off">
+  <div id="pronto">Pronto: spara i codici con la pistola</div>
+  <input id="manuale" placeholder="Codice a mano + Invio" autocomplete="off" inputmode="numeric">
   <button id="annulla" disabled>Rimuovi ultimo registrato</button>
   <div id="ultimo"></div>
   <div id="stato"></div>
   <div id="toast" role="status"></div>
 
 <script>
-// ponytail: tempi da regolare sul campo. Lo stesso codice inquadrato di continuo non viene ricontato prima di 2,5 s
-const ATTESA_STESSO = 2500, ATTESA_ALTRO = 800;
+// Lettura solo con pistola barcode (Bluetooth o USB, modalità tastiera HID): la fotocamera del telefono è stata
+// tolta il 21/11/2026 perché leggeva male (codici fantasma, fuoco da vicino). La pistola "scrive" il codice e manda Invio.
 
 // Incollare l'URL /exec del deployment Apps Script e lo stesso TOKEN di Code.gs
 const API = 'https://script.google.com/macros/s/AKfycbxvEbtEbtpLr5Q3kPAF-66nbd_Rid6VP0mpg4CTzVWjIBuHur9LbnacZtIehrfcgEqa/exec';
@@ -57,7 +42,7 @@ async function api(dati) {
 }
 
 const $ = id => document.getElementById(id);
-let motore = '', ms = 0, prodotti = {}, coda = [], inviando = false, miei = [], conteggio = 0, ultimoCodice = '', ultimoTempo = 0;
+let prodotti = {}, coda = [], inviando = false, miei = [], conteggio = 0;
 
 try { $('operatore').value = localStorage.getItem('operatore') || ''; } catch (e) {}
 $('operatore').onchange = e => { try { localStorage.setItem('operatore', e.target.value); } catch (_) {} };
@@ -78,22 +63,20 @@ function toast(msg, colore) {
 function aggiornaStato() {
   const u = miei[miei.length - 1];
   $('ultimo').textContent = u ? 'Ultimo: ' + (u.nome || u.codice) : '';
-  $('stato').textContent = `Scansioni: ${conteggio} · Da inviare: ${coda.length}` + (motore ? ` · Lettore: ${motore}` : '') + (ms ? ` (${ms} ms)` : '');
+  $('stato').textContent = `Scansioni: ${conteggio} · Da inviare: ${coda.length}`;
   $('annulla').disabled = !miei.length;
 }
 
+// Nessuna attesa tra letture: ogni sparo è un pezzo, anche lo stesso codice più volte di fila
 function registra(codice) {
   codice = String(codice).trim();
-  // UPC-A: il lettore integrato lo dà a 12 cifre, ZXing come EAN-13 con lo 0 davanti. In anagrafica è a 12 cifre
-  // e nessun EAN-13 inizia per 0: si toglie lo 0, così ogni telefono scrive lo stesso codice
+  // UPC-A: secondo l'impostazione della pistola arriva a 12 cifre o a 13 con lo 0 davanti. In anagrafica è a 12
+  // cifre e nessun EAN-13 inizia per 0: si toglie lo 0, così ogni pistola scrive lo stesso codice
   if (/^0\d{12}$/.test(codice)) codice = codice.slice(1);
   if (!codice) return;
-  const ora = Date.now();
-  if (ora - ultimoTempo < (codice === ultimoCodice ? ATTESA_STESSO : ATTESA_ALTRO)) return;
-  ultimoCodice = codice; ultimoTempo = ora;
 
   const nome = prodotti[codice] || '';
-  const s = { id: ora.toString(36) + Math.random().toString(36).slice(2, 8), codice, nome, op: $('operatore').value };
+  const s = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 8), codice, nome, op: $('operatore').value };
   miei.push(s);
   coda.push({ tipo: 'add', s });
   conteggio++;
@@ -104,7 +87,8 @@ function registra(codice) {
   invia();
 }
 
-$('annulla').onclick = () => {
+$('annulla').onclick = e => {
+  e.currentTarget.blur(); // il pulsante non resta selezionato: l'Invio della pistola non lo ripremerebbe
   const s = miei.pop();
   if (!s) return;
   conteggio--;
@@ -130,98 +114,31 @@ function invia() {
 
 window.addEventListener('beforeunload', e => { if (coda.length) { e.preventDefault(); e.returnValue = ''; } });
 
-// Lettore USB/Bluetooth (scrive come una tastiera e manda Invio): nessuna attesa tra letture
+// Codice scritto a mano nel campo
 $('manuale').addEventListener('keydown', e => {
   if (e.key !== 'Enter') return;
-  ultimoTempo = 0;
   registra(e.target.value);
   e.target.value = '';
 });
 
-// Tutta la famiglia EAN (richiesta di Luca). upc_e era stato tolto con html5-qrcode perché scambiava gli EAN-8
-// (80845263 letto 15860731): rimesso col nuovo lettore, da tenere d'occhio
-const FORMATI = ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39'];
-
-// Più codici nell'inquadratura (es. EAN-8 sull'etichetta e UPC-A sulla confezione): vale quello più al centro,
-// dove c'è la linea di mira. Prima si prendeva il primo trovato: 30062948 registrato come 300600066483
-function piuCentrale(r, w, h) {
-  const d = b => { const c = b.boundingBox; return (c.x + c.width / 2 - w / 2) ** 2 + (c.y + c.height / 2 - h / 2) ** 2; };
-  return r.reduce((a, b) => d(b) < d(a) ? b : a).rawValue;
-}
-
-// Lettore integrato del telefono (Android/Chrome) se legge tutti i formati, altrimenti ZXing-C++ in WebAssembly
-// (iPhone). Al posto di html5-qrcode, che su iPhone usava ZXing in JavaScript, debole sui codici lineari
-const detectorPronto = (async () => {
-  if ('BarcodeDetector' in window) {
-    const ok = await BarcodeDetector.getSupportedFormats().catch(() => []);
-    if (FORMATI.every(f => ok.includes(f))) { motore = 'integrato'; return new BarcodeDetector({ formats: FORMATI }); }
+// Pistola: si ricevono i tasti ovunque sia il cursore, senza toccare un campo (niente tastiera a schermo).
+// Si ignorano solo i campi di testo, dove si scrive a mano. Fine codice: Invio, o Tab per le pistole impostate così.
+// ponytail: buffer azzerato dopo 500 ms senza tasti, la pistola scrive un codice intero in pochi ms
+let buffer = '', ultimoTasto = 0;
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT') return;
+  const ora = Date.now();
+  if (ora - ultimoTasto > 500) buffer = '';
+  ultimoTasto = ora;
+  if (e.key === 'Enter' || e.key === 'Tab') {
+    if (!buffer) return;
+    e.preventDefault(); // niente clic su un pulsante selezionato, niente salto di campo
+    registra(buffer);
+    buffer = '';
+  } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    buffer += e.key;
   }
-  const m = await import('https://cdn.jsdelivr.net/npm/barcode-detector@3.2.3/ponyfill/+esm');
-  motore = 'zxing';
-  return new m.BarcodeDetector({ formats: FORMATI });
-})();
-detectorPronto.then(aggiornaStato, () => {});
-
-(async () => {
-  const detector = await detectorPronto;
-  const v = $('video');
-  // più risoluzione = barre più nitide. "ideal": se il telefono non ce la fa usa il massimo che ha
-  v.srcObject = await navigator.mediaDevices.getUserMedia({ audio: false, video: {
-    facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 }, advanced: [{ focusMode: 'continuous' }] } });
-  await v.play();
-  // Si legge la parte di fotogramma visibile nell'anteprima (FASCIA, quasi tutta), ridotta a max 1280 px di larghezza:
-  // leggere tutto il fotogramma a 1080p con ZXing era lento e raccoglieva codici fantasma. FASCIA è più grande del
-  // riquadro rosso apposta: col riquadro piccolo il codice doveva starci dentro e andava tenuto lontano (Luca, 21/11).
-  // Il giro successivo parte quando il precedente è finito: su un telefono lento le letture rallentano, non si accumulano.
-  // Un codice vale solo se letto uguale in CONFERME fotogrammi di fila: con immagine sfocata o mossa escono
-  // letture fantasma con cifra di controllo valida per caso (30062948 registrato come 6333832630065).
-  // ponytail: alzare a 3 se compaiono ancora codici inesistenti
-  const CONFERME = 2, FASCIA = { x: 0.02, y: 0.04, w: 0.96, h: 0.92 };
-  const tela = document.createElement('canvas'), ctx = tela.getContext('2d', { willReadFrequently: true });
-  let candidato = '', visto = 0;
-  const giro = async () => {
-    try {
-      // object-fit: cover → il fotogramma è scalato di s e centrato: si riporta il riquadro sullo schermo
-      // (W×H) alle coordinate del fotogramma
-      const W = v.clientWidth, H = v.clientHeight, vw = v.videoWidth, vh = v.videoHeight;
-      if (!W || !vw) throw 0;
-      const s = Math.max(W / vw, H / vh), ox = (W - vw * s) / 2, oy = (H - vh * s) / 2;
-      const sx = (W * FASCIA.x - ox) / s, sy = (H * FASCIA.y - oy) / s, sw = W * FASCIA.w / s, sh = H * FASCIA.h / s;
-      const k = Math.min(1, 1280 / sw);
-      tela.width = Math.round(sw * k); tela.height = Math.round(sh * k);
-      ctx.drawImage(v, sx, sy, sw, sh, 0, 0, tela.width, tela.height);
-      const t0 = performance.now();
-      const r = await detector.detect(tela);
-      ms = Math.round(performance.now() - t0);
-      const c = r.length ? piuCentrale(r, tela.width, tela.height) : '';
-      visto = c && c === candidato ? visto + 1 : 1;
-      candidato = c;
-      if (c && visto >= CONFERME) registra(c); // tenuto in vista: registra() lo riconta solo dopo ATTESA_STESSO
-      aggiornaStato();
-    } catch (_) {}
-    setTimeout(giro, 30);
-  };
-  giro();
-})().catch(e => {
-  $('errore').textContent = 'Fotocamera live non disponibile (' + (e && (e.name || e.message) || e) + '). Usa "Scatta foto del codice".';
-  $('foto').style.display = 'block';
 });
-
-// Ripiego: foto con la fotocamera nativa del telefono, poi lettura del codice dall'immagine
-$('fotoInput').onchange = async e => {
-  const f = e.target.files[0];
-  e.target.value = '';
-  if (!f) return;
-  try {
-    const img = await createImageBitmap(f);
-    const r = await (await detectorPronto).detect(img);
-    if (!r.length) throw 0;
-    ultimoTempo = 0;
-    registra(piuCentrale(r, img.width, img.height));
-  } catch (_) {
-    toast('Codice non letto: riprova più vicino e con più luce', '#b91c1c');
-  }
-};
 </script>
 </body>
 </html>
