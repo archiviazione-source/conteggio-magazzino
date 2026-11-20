@@ -5,7 +5,10 @@
 <title>Conteggio magazzino</title>
 <style>
   body { font-family: system-ui, sans-serif; margin: 0 auto; padding: 12px; max-width: 520px; }
-  #video { width: 100%; border-radius: 8px; background: #000; }
+  #video { width: 100%; border-radius: 8px; background: #000; display: block; }
+  /* linea di mira: si legge il codice più vicino al centro */
+  #mirino { position: relative; }
+  #mirino::after { content: ''; position: absolute; left: 8%; right: 8%; top: 50%; height: 2px; background: #ef4444; pointer-events: none; }
   input, button { font-size: 18px; padding: 12px; width: 100%; box-sizing: border-box; margin-top: 8px; border-radius: 8px; border: 1px solid #ccc; }
   #annulla { background: #b91c1c; color: #fff; border: 0; }
   #annulla:disabled { background: #ddd; color: #888; }
@@ -18,7 +21,7 @@
 </head>
 <body>
   <input id="operatore" placeholder="Nome operatore">
-  <video id="video" playsinline muted autoplay></video>
+  <div id="mirino"><video id="video" playsinline muted autoplay></video></div>
   <div id="errore" style="color:#b91c1c;font-size:14px"></div>
   <label id="foto" style="display:none">
     <span style="display:block;text-align:center;background:#1d4ed8;color:#fff;padding:14px;border-radius:8px;margin-top:8px;font-size:18px">📷 Scatta foto del codice</span>
@@ -74,6 +77,9 @@ function aggiornaStato() {
 
 function registra(codice) {
   codice = String(codice).trim();
+  // UPC-A: il lettore integrato lo dà a 12 cifre, ZXing come EAN-13 con lo 0 davanti. In anagrafica è a 12 cifre
+  // e nessun EAN-13 inizia per 0: si toglie lo 0, così ogni telefono scrive lo stesso codice
+  if (/^0\d{12}$/.test(codice)) codice = codice.slice(1);
   if (!codice) return;
   const ora = Date.now();
   if (ora - ultimoTempo < (codice === ultimoCodice ? ATTESA_STESSO : ATTESA_ALTRO)) return;
@@ -125,8 +131,16 @@ $('manuale').addEventListener('keydown', e => {
   e.target.value = '';
 });
 
-// niente upc_e: scambiava gli EAN-8 per UPC-E (80845263 letto 15860731). In anagrafica non ci sono UPC-E
-const FORMATI = ['ean_13', 'ean_8', 'upc_a', 'code_128', 'code_39'];
+// Tutta la famiglia EAN (richiesta di Luca). upc_e era stato tolto con html5-qrcode perché scambiava gli EAN-8
+// (80845263 letto 15860731): rimesso col nuovo lettore, da tenere d'occhio
+const FORMATI = ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39'];
+
+// Più codici nell'inquadratura (es. EAN-8 sull'etichetta e UPC-A sulla confezione): vale quello più al centro,
+// dove c'è la linea di mira. Prima si prendeva il primo trovato: 30062948 registrato come 300600066483
+function piuCentrale(r, w, h) {
+  const d = b => { const c = b.boundingBox; return (c.x + c.width / 2 - w / 2) ** 2 + (c.y + c.height / 2 - h / 2) ** 2; };
+  return r.reduce((a, b) => d(b) < d(a) ? b : a).rawValue;
+}
 
 // Lettore integrato del telefono (Android/Chrome) se legge tutti i formati, altrimenti ZXing-C++ in WebAssembly
 // (iPhone). Al posto di html5-qrcode, che su iPhone usava ZXing in JavaScript, debole sui codici lineari
@@ -153,7 +167,7 @@ detectorPronto.then(aggiornaStato, () => {});
   const giro = async () => {
     try {
       const r = await detector.detect(v);
-      if (r.length) registra(r[0].rawValue);
+      if (r.length) registra(piuCentrale(r, v.videoWidth, v.videoHeight));
     } catch (_) {}
     setTimeout(giro, 60);
   };
@@ -169,10 +183,11 @@ $('fotoInput').onchange = async e => {
   e.target.value = '';
   if (!f) return;
   try {
-    const r = await (await detectorPronto).detect(await createImageBitmap(f));
+    const img = await createImageBitmap(f);
+    const r = await (await detectorPronto).detect(img);
     if (!r.length) throw 0;
     ultimoTempo = 0;
-    registra(r[0].rawValue);
+    registra(piuCentrale(r, img.width, img.height));
   } catch (_) {
     toast('Codice non letto: riprova più vicino e con più luce', '#b91c1c');
   }
