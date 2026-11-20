@@ -6,9 +6,10 @@
 <style>
   body { font-family: system-ui, sans-serif; margin: 0 auto; padding: 12px; max-width: 520px; }
   #video { width: 100%; border-radius: 8px; background: #000; display: block; }
-  /* linea di mira: si legge il codice più vicino al centro */
+  /* riquadro di lettura: si legge solo qui dentro (stesse percentuali di FASCIA nello script) */
   #mirino { position: relative; }
-  #mirino::after { content: ''; position: absolute; left: 8%; right: 8%; top: 50%; height: 2px; background: #ef4444; pointer-events: none; }
+  #mirino::after { content: ''; position: absolute; left: 5%; width: 90%; top: 30%; height: 40%; box-sizing: border-box;
+                   border: 3px solid #ef4444; border-radius: 6px; pointer-events: none; }
   input, button { font-size: 18px; padding: 12px; width: 100%; box-sizing: border-box; margin-top: 8px; border-radius: 8px; border: 1px solid #ccc; }
   #annulla { background: #b91c1c; color: #fff; border: 0; }
   #annulla:disabled { background: #ddd; color: #888; }
@@ -50,7 +51,7 @@ async function api(dati) {
 }
 
 const $ = id => document.getElementById(id);
-let motore = '', prodotti = {}, coda = [], inviando = false, miei = [], conteggio = 0, ultimoCodice = '', ultimoTempo = 0;
+let motore = '', ms = 0, prodotti = {}, coda = [], inviando = false, miei = [], conteggio = 0, ultimoCodice = '', ultimoTempo = 0;
 
 try { $('operatore').value = localStorage.getItem('operatore') || ''; } catch (e) {}
 $('operatore').onchange = e => { try { localStorage.setItem('operatore', e.target.value); } catch (_) {} };
@@ -71,7 +72,7 @@ function toast(msg, colore) {
 function aggiornaStato() {
   const u = miei[miei.length - 1];
   $('ultimo').textContent = u ? 'Ultimo: ' + (u.nome || u.codice) : '';
-  $('stato').textContent = `Scansioni: ${conteggio} · Da inviare: ${coda.length}` + (motore ? ` · Lettore: ${motore}` : '');
+  $('stato').textContent = `Scansioni: ${conteggio} · Da inviare: ${coda.length}` + (motore ? ` · Lettore: ${motore}` : '') + (ms ? ` (${ms} ms)` : '');
   $('annulla').disabled = !miei.length;
 }
 
@@ -162,22 +163,30 @@ detectorPronto.then(aggiornaStato, () => {});
   v.srcObject = await navigator.mediaDevices.getUserMedia({ audio: false, video: {
     facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 }, advanced: [{ focusMode: 'continuous' }] } });
   await v.play();
-  // Si legge l'intero fotogramma, non un riquadro. Il giro successivo parte quando il precedente è finito:
-  // su un telefono lento le letture rallentano invece di accumularsi.
+  // Si legge solo la fascia del riquadro rosso (stesse percentuali di #mirino::after), ridotta a max 1280 px di
+  // larghezza: leggere tutto il fotogramma a 1080p con ZXing era lento e raccoglieva codici fantasma dallo sfondo.
+  // Il giro successivo parte quando il precedente è finito: su un telefono lento le letture rallentano, non si accumulano.
   // Un codice vale solo se letto uguale in CONFERME fotogrammi di fila: con immagine sfocata o mossa escono
   // letture fantasma con cifra di controllo valida per caso (30062948 registrato come 6333832630065).
   // ponytail: alzare a 3 se compaiono ancora codici inesistenti
-  const CONFERME = 2;
+  const CONFERME = 2, FASCIA = { x: 0.05, y: 0.3, w: 0.9, h: 0.4 };
+  const tela = document.createElement('canvas'), ctx = tela.getContext('2d', { willReadFrequently: true });
   let candidato = '', visto = 0;
   const giro = async () => {
     try {
-      const r = await detector.detect(v);
-      const c = r.length ? piuCentrale(r, v.videoWidth, v.videoHeight) : '';
+      const sw = v.videoWidth * FASCIA.w, sh = v.videoHeight * FASCIA.h, k = Math.min(1, 1280 / sw);
+      tela.width = Math.round(sw * k); tela.height = Math.round(sh * k);
+      ctx.drawImage(v, v.videoWidth * FASCIA.x, v.videoHeight * FASCIA.y, sw, sh, 0, 0, tela.width, tela.height);
+      const t0 = performance.now();
+      const r = await detector.detect(tela);
+      ms = Math.round(performance.now() - t0);
+      const c = r.length ? piuCentrale(r, tela.width, tela.height) : '';
       visto = c && c === candidato ? visto + 1 : 1;
       candidato = c;
       if (c && visto >= CONFERME) registra(c); // tenuto in vista: registra() lo riconta solo dopo ATTESA_STESSO
+      aggiornaStato();
     } catch (_) {}
-    setTimeout(giro, 60);
+    setTimeout(giro, 30);
   };
   giro();
 })().catch(e => {
