@@ -5,9 +5,13 @@
 <title>Conteggio magazzino</title>
 <style>
   body { font-family: system-ui, sans-serif; margin: 0 auto; padding: 12px; max-width: 520px; }
-  #video { width: 100%; border-radius: 8px; background: #000; display: block; }
+  /* Anteprima piccola apposta: a tutto schermo si avvicinava il codice per riempirla e si andava sotto la distanza
+     minima di messa a fuoco. Con anteprima piccola si tiene il telefono a 20-30 cm e il fuoco aggancia (prova di
+     Luca con "sito desktop"). width/height auto + max-*: il video resta in proporzione, il riquadro coincide con FASCIA */
+  #video { display: block; width: auto; height: auto; max-width: 100%; max-height: 40vh; border-radius: 8px; background: #000; }
+  #mirino { position: relative; width: fit-content; margin: 8px auto 0; }
+  #distanza { text-align: center; font-size: 14px; color: #555; margin-top: 4px; }
   /* riquadro di lettura: si legge solo qui dentro (stesse percentuali di FASCIA nello script) */
-  #mirino { position: relative; }
   #mirino::after { content: ''; position: absolute; left: 5%; width: 90%; top: 30%; height: 40%; box-sizing: border-box;
                    border: 3px solid #ef4444; border-radius: 6px; pointer-events: none; }
   input, button { font-size: 18px; padding: 12px; width: 100%; box-sizing: border-box; margin-top: 8px; border-radius: 8px; border: 1px solid #ccc; }
@@ -23,6 +27,7 @@
 <body>
   <input id="operatore" placeholder="Nome operatore">
   <div id="mirino"><video id="video" playsinline muted autoplay></video></div>
+  <div id="distanza">Tieni il telefono a 20–30 cm, il codice dentro il riquadro rosso</div>
   <div id="errore" style="color:#b91c1c;font-size:14px"></div>
   <label id="foto" style="display:none">
     <span style="display:block;text-align:center;background:#1d4ed8;color:#fff;padding:14px;border-radius:8px;margin-top:8px;font-size:18px">📷 Scatta foto del codice</span>
