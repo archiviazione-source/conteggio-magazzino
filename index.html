@@ -7,7 +7,7 @@
   body { font-family: system-ui, sans-serif; margin: 0 auto; padding: 12px; max-width: 520px; }
   #pronto { margin-top: 8px; padding: 16px; border-radius: 8px; background: #dcfce7; color: #166534; font-size: 18px; text-align: center; }
   #pronto.ferma { background: #fee2e2; color: #991b1b; }
-  input, #annulla { font-size: 18px; padding: 12px; width: 100%; box-sizing: border-box; margin-top: 8px; border-radius: 8px; border: 1px solid #ccc; }
+  input, select, #annulla { font-size: 18px; padding: 12px; width: 100%; box-sizing: border-box; margin-top: 8px; border-radius: 8px; border: 1px solid #ccc; background: #fff; }
   #operatore.manca { border: 2px solid #dc2626; }
   #annulla { background: #b91c1c; color: #fff; border: 0; }
   #annulla:disabled { background: #ddd; color: #888; }
@@ -24,7 +24,7 @@
 </style>
 </head>
 <body>
-  <input id="operatore" placeholder="Nome operatore (obbligatorio)" autocomplete="off">
+  <select id="operatore" aria-label="Operatore"><option value="">Caricamento operatori…</option></select>
   <div id="pronto"></div>
   <input id="manuale" placeholder="Codice a mano + Invio" autocomplete="off" inputmode="numeric">
   <button id="annulla" disabled>Rimuovi ultimo registrato</button>
@@ -43,6 +43,7 @@
 // Incollare l'URL /exec del deployment Apps Script e lo stesso TOKEN di Code.gs
 const API = 'https://script.google.com/macros/s/AKfycbxvEbtEbtpLr5Q3kPAF-66nbd_Rid6VP0mpg4CTzVWjIBuHur9LbnacZtIehrfcgEqa/exec';
 const TOKEN = 'HgrnQ_nEDDeixZ2O';
+const NUOVO = '__nuovo__'; // valore della voce "+ Aggiungi operatore"
 
 // Body stringa = text/plain: richiesta "semplice", niente preflight CORS verso Apps Script
 async function api(dati) {
@@ -53,27 +54,71 @@ async function api(dati) {
 }
 
 const $ = id => document.getElementById(id);
-// miei = letture fatte da questo telefono in questa sessione (la tabella), dalla più vecchia alla più recente
-let prodotti = {}, riferimenti = {}, coda = [], inviando = false, miei = [];
+// miei = letture dell'operatore scelto (tabella), dalla più vecchia alla più recente: quelle già nel foglio
+// (anche da altri telefoni) più quelle nuove di questo telefono
+let prodotti = {}, riferimenti = {}, coda = [], inviando = false, miei = [], caricando = false;
 
-const operatore = () => $('operatore').value.trim();
-try { $('operatore').value = localStorage.getItem('operatore') || ''; } catch (e) {}
-$('operatore').oninput = () => {
-  try { localStorage.setItem('operatore', $('operatore').value); } catch (_) {}
-  aggiornaStato();
-};
-// Invio nel nome: si esce dal campo, così le letture della pistola non finiscono nel nome.
-// Se la pistola ha sparato col cursore ancora nel nome, le cifre in coda (6 o più) sono il codice: si separano
-$('operatore').addEventListener('keydown', e => {
-  if (e.key !== 'Enter') return;
-  const m = e.target.value.match(/^(.*?)\s*(\d{6,})$/);
-  if (m && m[1].trim()) { e.target.value = m[1].trim(); $('operatore').oninput(); registra(m[2]); }
-  e.target.blur();
-});
+const operatore = () => { const v = $('operatore').value; return v === NUOVO ? '' : v; };
+let opPrecedente = '';
+try { opPrecedente = localStorage.getItem('operatore') || ''; } catch (e) {}
 
 api({ azione: 'prodotti' })
   .then(j => { prodotti = j.prodotti; riferimenti = j.riferimenti || {}; aggiornaStato(); })
   .catch(e => toast('Errore caricamento anagrafica: ' + e.message, '#b91c1c'));
+
+// Menu: "Scegli operatore", operatori del foglio in ordine alfabetico, "+ Aggiungi operatore"
+function riempiOperatori(elenco, scelto) {
+  const sel = $('operatore');
+  sel.replaceChildren(new Option('— Scegli operatore —', ''),
+    ...elenco.slice().sort((a, b) => a.localeCompare(b, 'it')).map(n => new Option(n, n)),
+    new Option('+ Aggiungi operatore', NUOVO));
+  sel.value = elenco.includes(scelto) ? scelto : '';
+}
+
+api({ azione: 'operatori' })
+  .then(j => { riempiOperatori(j.operatori, opPrecedente); cambiaOperatore(); })
+  .catch(e => toast('Errore caricamento operatori: ' + e.message, '#b91c1c'));
+
+$('operatore').onchange = async e => {
+  e.target.blur(); // il menu non resta selezionato: le cifre della pistola non cambierebbero operatore
+  if (e.target.value !== NUOVO) return cambiaOperatore();
+  const nome = (prompt('Nome del nuovo operatore') || '').trim();
+  if (!nome) { e.target.value = opPrecedente; return; }
+  try {
+    const j = await api({ azione: 'aggiungiOperatore', nome });
+    // se il nome c'era già (maiuscole a parte) si sceglie quello del foglio
+    riempiOperatori(j.operatori, j.operatori.find(n => n.toLowerCase() === nome.toLowerCase()));
+    toast(`Operatore ${operatore()} aggiunto`);
+  } catch (err) {
+    toast('Operatore non salvato: ' + err.message, '#b91c1c');
+    e.target.value = opPrecedente;
+  }
+  cambiaOperatore();
+};
+
+// Scelto un operatore: la tabella si ricarica con tutte le sue letture già nel foglio
+async function cambiaOperatore() {
+  const op = operatore();
+  opPrecedente = op;
+  try { localStorage.setItem('operatore', op); } catch (_) {}
+  miei = [];
+  caricando = !!op;
+  aggiornaStato();
+  if (!op) return;
+  try {
+    const j = await api({ azione: 'scansioni', op });
+    if (op !== operatore()) return; // nel frattempo è stato scelto un altro operatore
+    const nelFoglio = new Set(j.scansioni.map(x => x.id));
+    const daCancellare = new Set(coda.filter(x => x.tipo === 'del').map(x => x.s.id));
+    miei = j.scansioni.filter(x => !daCancellare.has(x.id)).map(x => ({ ...x, op }))
+      // letture di questo telefono non ancora arrivate al foglio
+      .concat(coda.filter(x => x.tipo === 'add' && x.s.op === op && !nelFoglio.has(x.s.id)).map(x => x.s));
+  } catch (e) {
+    toast('Errore caricamento letture: ' + e.message, '#b91c1c');
+  }
+  caricando = false;
+  aggiornaStato();
+}
 
 function toast(msg, colore) {
   const t = $('toast');
@@ -88,18 +133,19 @@ function aggiornaStato() {
   const manca = !operatore();
   $('operatore').classList.toggle('manca', manca);
   $('pronto').classList.toggle('ferma', manca);
-  $('pronto').textContent = manca ? 'Scrivi il nome operatore per iniziare' : 'Pronto: spara i codici con la pistola';
+  $('pronto').textContent = manca ? 'Scegli l\'operatore per iniziare' : 'Pronto: spara i codici con la pistola';
   const u = miei[miei.length - 1];
-  $('ultimo').textContent = u ? 'Ultimo: ' + (u.nome || u.codice) : '';
-  $('stato').textContent = `Scansioni: ${miei.length} · Da inviare: ${coda.length}`;
+  $('ultimo').textContent = u ? 'Ultimo: ' + (u.nome || prodotti[u.codice] || u.codice) : '';
+  $('stato').textContent = caricando ? 'Caricamento letture dell\'operatore…'
+    : `Scansioni: ${miei.length} · Da inviare: ${coda.length}`;
   $('annulla').disabled = !miei.length;
 
-  // Tabella, la lettura più recente in alto. textContent: niente HTML preso dal foglio
-  const tb = $('lista');
-  tb.replaceChildren(...miei.slice().reverse().map(s => {
+  // Tabella, la lettura più recente in alto. Codice e nome dall'anagrafica. textContent: niente HTML dal foglio
+  $('lista').replaceChildren(...miei.slice().reverse().map(s => {
+    const nome = s.nome || prodotti[s.codice] || '';
     const tr = document.createElement('tr');
-    if (!s.nome) tr.className = 'ignoto';
-    for (const [testo, classe] of [[s.codice, 'barcode'], [s.rif || '—'], [s.nome || 'Non in anagrafica']]) {
+    if (!nome) tr.className = 'ignoto';
+    for (const [testo, classe] of [[s.codice, 'barcode'], [riferimenti[s.codice] || '—'], [nome || 'Non in anagrafica']]) {
       const td = tr.insertCell();
       td.textContent = testo;
       if (classe) td.className = classe;
@@ -107,8 +153,11 @@ function aggiornaStato() {
     const b = document.createElement('button');
     b.className = 'cestino';
     b.textContent = '🗑';
-    b.setAttribute('aria-label', 'Elimina ' + (s.nome || s.codice));
-    b.onclick = e => { e.currentTarget.blur(); elimina(s); };
+    b.setAttribute('aria-label', 'Elimina ' + (nome || s.codice));
+    b.onclick = e => {
+      e.currentTarget.blur();
+      if (confirm(`Sei sicuro di voler eliminare questa lettura?\n\n${s.codice}  ${nome || 'Non in anagrafica'}`)) elimina(s);
+    };
     tr.insertCell().append(b);
     return tr;
   }));
@@ -122,15 +171,13 @@ function registra(codice) {
   if (/^0\d{12}$/.test(codice)) codice = codice.slice(1);
   if (!codice) return;
   if (!operatore()) { // obbligatorio: la lettura non viene registrata
-    toast('Lettura NON registrata: scrivi prima il nome operatore', '#b91c1c');
+    toast('Lettura NON registrata: scegli prima l\'operatore', '#b91c1c');
     if (navigator.vibrate) navigator.vibrate([100, 60, 100]);
-    $('operatore').focus();
     return;
   }
 
   const nome = prodotti[codice] || '';
-  const s = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 8), codice, nome,
-              rif: riferimenti[codice] || '', op: operatore() };
+  const s = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 8), codice, nome, op: operatore() };
   miei.push(s);
   coda.push({ tipo: 'add', s });
   if (navigator.vibrate) navigator.vibrate(80);
@@ -148,7 +195,7 @@ function elimina(s) {
   const i = coda.findIndex(x => x.tipo === 'add' && x.s.id === s.id);
   if (i > -1 && !(inviando && i === 0)) coda.splice(i, 1);
   else coda.push({ tipo: 'del', s });
-  toast(`${s.nome || s.codice} Rimosso`, '#b91c1c');
+  toast(`${s.nome || prodotti[s.codice] || s.codice} Rimosso`, '#b91c1c');
   aggiornaStato();
   invia();
 }
@@ -180,7 +227,8 @@ $('manuale').addEventListener('keydown', e => {
 });
 
 // Pistola: si ricevono i tasti ovunque sia il cursore, senza toccare un campo (niente tastiera a schermo).
-// Si ignorano solo i campi di testo, dove si scrive a mano. Fine codice: Invio, o Tab per le pistole impostate così.
+// Si ignora solo il campo del codice a mano. Fine codice: Invio, o Tab per le pistole impostate così.
+// Sul menu operatori i tasti vengono bloccati: le cifre farebbero scegliere un altro operatore.
 // ponytail: buffer azzerato dopo 500 ms senza tasti, la pistola scrive un codice intero in pochi ms
 let buffer = '', ultimoTasto = 0;
 document.addEventListener('keydown', e => {
@@ -194,6 +242,7 @@ document.addEventListener('keydown', e => {
     registra(buffer);
     buffer = '';
   } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    if (e.target.tagName === 'SELECT') e.preventDefault();
     buffer += e.key;
   }
 });
