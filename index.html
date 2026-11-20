@@ -6,23 +6,34 @@
 <style>
   body { font-family: system-ui, sans-serif; margin: 0 auto; padding: 12px; max-width: 520px; }
   #pronto { margin-top: 8px; padding: 16px; border-radius: 8px; background: #dcfce7; color: #166534; font-size: 18px; text-align: center; }
-  input, button { font-size: 18px; padding: 12px; width: 100%; box-sizing: border-box; margin-top: 8px; border-radius: 8px; border: 1px solid #ccc; }
+  #pronto.ferma { background: #fee2e2; color: #991b1b; }
+  input, #annulla { font-size: 18px; padding: 12px; width: 100%; box-sizing: border-box; margin-top: 8px; border-radius: 8px; border: 1px solid #ccc; }
+  #operatore.manca { border: 2px solid #dc2626; }
   #annulla { background: #b91c1c; color: #fff; border: 0; }
   #annulla:disabled { background: #ddd; color: #888; }
   #ultimo { margin-top: 8px; font-weight: 600; }
   #stato { font-size: 14px; color: #555; margin-top: 4px; }
+  table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 14px; }
+  th, td { text-align: left; padding: 6px 4px; border-bottom: 1px solid #e5e7eb; vertical-align: middle; }
+  td.barcode { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  tr.ignoto td { color: #c2410c; }
+  .cestino { font-size: 20px; padding: 4px 8px; background: none; border: 0; cursor: pointer; }
   #toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); padding: 12px 18px; border-radius: 8px;
            color: #fff; font-size: 18px; opacity: 0; transition: opacity .2s; max-width: 90%; text-align: center; pointer-events: none; }
   #toast.show { opacity: 1; }
 </style>
 </head>
 <body>
-  <input id="operatore" placeholder="Nome operatore">
-  <div id="pronto">Pronto: spara i codici con la pistola</div>
+  <input id="operatore" placeholder="Nome operatore (obbligatorio)" autocomplete="off">
+  <div id="pronto"></div>
   <input id="manuale" placeholder="Codice a mano + Invio" autocomplete="off" inputmode="numeric">
   <button id="annulla" disabled>Rimuovi ultimo registrato</button>
   <div id="ultimo"></div>
   <div id="stato"></div>
+  <table>
+    <thead><tr><th>Barcode</th><th>Codice</th><th>Nome</th><th></th></tr></thead>
+    <tbody id="lista"></tbody>
+  </table>
   <div id="toast" role="status"></div>
 
 <script>
@@ -42,13 +53,26 @@ async function api(dati) {
 }
 
 const $ = id => document.getElementById(id);
-let prodotti = {}, coda = [], inviando = false, miei = [], conteggio = 0;
+// miei = letture fatte da questo telefono in questa sessione (la tabella), dalla più vecchia alla più recente
+let prodotti = {}, riferimenti = {}, coda = [], inviando = false, miei = [];
 
+const operatore = () => $('operatore').value.trim();
 try { $('operatore').value = localStorage.getItem('operatore') || ''; } catch (e) {}
-$('operatore').onchange = e => { try { localStorage.setItem('operatore', e.target.value); } catch (_) {} };
+$('operatore').oninput = () => {
+  try { localStorage.setItem('operatore', $('operatore').value); } catch (_) {}
+  aggiornaStato();
+};
+// Invio nel nome: si esce dal campo, così le letture della pistola non finiscono nel nome.
+// Se la pistola ha sparato col cursore ancora nel nome, le cifre in coda (6 o più) sono il codice: si separano
+$('operatore').addEventListener('keydown', e => {
+  if (e.key !== 'Enter') return;
+  const m = e.target.value.match(/^(.*?)\s*(\d{6,})$/);
+  if (m && m[1].trim()) { e.target.value = m[1].trim(); $('operatore').oninput(); registra(m[2]); }
+  e.target.blur();
+});
 
 api({ azione: 'prodotti' })
-  .then(j => { prodotti = j.prodotti; aggiornaStato(); })
+  .then(j => { prodotti = j.prodotti; riferimenti = j.riferimenti || {}; aggiornaStato(); })
   .catch(e => toast('Errore caricamento anagrafica: ' + e.message, '#b91c1c'));
 
 function toast(msg, colore) {
@@ -61,10 +85,33 @@ function toast(msg, colore) {
 }
 
 function aggiornaStato() {
+  const manca = !operatore();
+  $('operatore').classList.toggle('manca', manca);
+  $('pronto').classList.toggle('ferma', manca);
+  $('pronto').textContent = manca ? 'Scrivi il nome operatore per iniziare' : 'Pronto: spara i codici con la pistola';
   const u = miei[miei.length - 1];
   $('ultimo').textContent = u ? 'Ultimo: ' + (u.nome || u.codice) : '';
-  $('stato').textContent = `Scansioni: ${conteggio} · Da inviare: ${coda.length}`;
+  $('stato').textContent = `Scansioni: ${miei.length} · Da inviare: ${coda.length}`;
   $('annulla').disabled = !miei.length;
+
+  // Tabella, la lettura più recente in alto. textContent: niente HTML preso dal foglio
+  const tb = $('lista');
+  tb.replaceChildren(...miei.slice().reverse().map(s => {
+    const tr = document.createElement('tr');
+    if (!s.nome) tr.className = 'ignoto';
+    for (const [testo, classe] of [[s.codice, 'barcode'], [s.rif || '—'], [s.nome || 'Non in anagrafica']]) {
+      const td = tr.insertCell();
+      td.textContent = testo;
+      if (classe) td.className = classe;
+    }
+    const b = document.createElement('button');
+    b.className = 'cestino';
+    b.textContent = '🗑';
+    b.setAttribute('aria-label', 'Elimina ' + (s.nome || s.codice));
+    b.onclick = e => { e.currentTarget.blur(); elimina(s); };
+    tr.insertCell().append(b);
+    return tr;
+  }));
 }
 
 // Nessuna attesa tra letture: ogni sparo è un pezzo, anche lo stesso codice più volte di fila
@@ -74,12 +121,18 @@ function registra(codice) {
   // cifre e nessun EAN-13 inizia per 0: si toglie lo 0, così ogni pistola scrive lo stesso codice
   if (/^0\d{12}$/.test(codice)) codice = codice.slice(1);
   if (!codice) return;
+  if (!operatore()) { // obbligatorio: la lettura non viene registrata
+    toast('Lettura NON registrata: scrivi prima il nome operatore', '#b91c1c');
+    if (navigator.vibrate) navigator.vibrate([100, 60, 100]);
+    $('operatore').focus();
+    return;
+  }
 
   const nome = prodotti[codice] || '';
-  const s = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 8), codice, nome, op: $('operatore').value };
+  const s = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 8), codice, nome,
+              rif: riferimenti[codice] || '', op: operatore() };
   miei.push(s);
   coda.push({ tipo: 'add', s });
-  conteggio++;
   if (navigator.vibrate) navigator.vibrate(80);
   if (nome) toast(`${nome} Aggiunto`);
   else toast(`Codice ${codice} non in anagrafica — Aggiunto`, '#c2410c');
@@ -87,17 +140,22 @@ function registra(codice) {
   invia();
 }
 
-$('annulla').onclick = e => {
-  e.currentTarget.blur(); // il pulsante non resta selezionato: l'Invio della pistola non lo ripremerebbe
-  const s = miei.pop();
-  if (!s) return;
-  conteggio--;
+// Cancella una lettura qualsiasi della tabella: se è ancora in coda basta toglierla, altrimenti si cancella dal foglio
+function elimina(s) {
+  const k = miei.indexOf(s);
+  if (k < 0) return;
+  miei.splice(k, 1);
   const i = coda.findIndex(x => x.tipo === 'add' && x.s.id === s.id);
-  if (i > -1 && !(inviando && i === 0)) coda.splice(i, 1); // non ancora inviata: basta toglierla
-  else coda.push({ tipo: 'del', s });                         // già sul foglio: si cancella
+  if (i > -1 && !(inviando && i === 0)) coda.splice(i, 1);
+  else coda.push({ tipo: 'del', s });
   toast(`${s.nome || s.codice} Rimosso`, '#b91c1c');
   aggiornaStato();
   invia();
+}
+
+$('annulla').onclick = e => {
+  e.currentTarget.blur(); // il pulsante non resta selezionato: l'Invio della pistola non lo ripremerebbe
+  if (miei.length) elimina(miei[miei.length - 1]);
 };
 
 // Una scrittura alla volta, in ordine. Se la rete cade si ritenta ogni 3 s senza perdere nulla
@@ -132,13 +190,15 @@ document.addEventListener('keydown', e => {
   ultimoTasto = ora;
   if (e.key === 'Enter' || e.key === 'Tab') {
     if (!buffer) return;
-    e.preventDefault(); // niente clic su un pulsante selezionato, niente salto di campo
+    e.preventDefault(); // niente clic su un pulsante selezionato (anche i cestini), niente salto di campo
     registra(buffer);
     buffer = '';
   } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
     buffer += e.key;
   }
 });
+
+aggiornaStato();
 </script>
 </body>
 </html>
