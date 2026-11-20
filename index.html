@@ -7,8 +7,8 @@
   body { font-family: system-ui, sans-serif; margin: 0 auto; padding: 12px; max-width: 520px; }
   /* Anteprima piccola apposta: a tutto schermo si avvicinava il codice per riempirla e si andava sotto la distanza
      minima di messa a fuoco (prova di Luca con "sito desktop"). Forma orizzontale fissa fin dal caricamento:
-     object-fit: cover mostra la fascia centrale dell'immagine; lo script calcola quale parte del fotogramma è
-     sotto il riquadro rosso, quindi FASCIA deve avere le stesse percentuali di #mirino::after */
+     object-fit: cover mostra la fascia centrale dell'immagine. Il riquadro rosso serve solo a mirare: si legge
+     tutta l'anteprima (FASCIA nello script) e vale il codice più vicino al centro */
   #mirino { position: relative; width: 100%; max-width: 420px; aspect-ratio: 16 / 10; margin: 8px auto 0;
             border-radius: 8px; overflow: hidden; background: #000; }
   #video { display: block; width: 100%; height: 100%; object-fit: cover; }
@@ -28,7 +28,7 @@
 <body>
   <input id="operatore" placeholder="Nome operatore">
   <div id="mirino"><video id="video" playsinline muted autoplay></video></div>
-  <div id="distanza">Tieni il telefono a 20–30 cm, il codice dentro il riquadro rosso</div>
+  <div id="distanza">Punta il riquadro rosso sul codice. Se è sfocato, allontana un po' il telefono</div>
   <div id="errore" style="color:#b91c1c;font-size:14px"></div>
   <label id="foto" style="display:none">
     <span style="display:block;text-align:center;background:#1d4ed8;color:#fff;padding:14px;border-radius:8px;margin-top:8px;font-size:18px">📷 Scatta foto del codice</span>
@@ -169,13 +169,14 @@ detectorPronto.then(aggiornaStato, () => {});
   v.srcObject = await navigator.mediaDevices.getUserMedia({ audio: false, video: {
     facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 }, advanced: [{ focusMode: 'continuous' }] } });
   await v.play();
-  // Si legge solo la parte di fotogramma sotto il riquadro rosso (stesse percentuali di #mirino::after), ridotta a
-  // max 1280 px di larghezza: leggere tutto il fotogramma a 1080p con ZXing era lento e raccoglieva codici fantasma.
+  // Si legge la parte di fotogramma visibile nell'anteprima (FASCIA, quasi tutta), ridotta a max 1280 px di larghezza:
+  // leggere tutto il fotogramma a 1080p con ZXing era lento e raccoglieva codici fantasma. FASCIA è più grande del
+  // riquadro rosso apposta: col riquadro piccolo il codice doveva starci dentro e andava tenuto lontano (Luca, 21/11).
   // Il giro successivo parte quando il precedente è finito: su un telefono lento le letture rallentano, non si accumulano.
   // Un codice vale solo se letto uguale in CONFERME fotogrammi di fila: con immagine sfocata o mossa escono
   // letture fantasma con cifra di controllo valida per caso (30062948 registrato come 6333832630065).
   // ponytail: alzare a 3 se compaiono ancora codici inesistenti
-  const CONFERME = 2, FASCIA = { x: 0.25, y: 0.35, w: 0.5, h: 0.3 };
+  const CONFERME = 2, FASCIA = { x: 0.02, y: 0.04, w: 0.96, h: 0.92 };
   const tela = document.createElement('canvas'), ctx = tela.getContext('2d', { willReadFrequently: true });
   let candidato = '', visto = 0;
   const giro = async () => {
