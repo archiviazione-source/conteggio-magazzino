@@ -129,6 +129,159 @@ $('manuale').addEventListener('keydown', e => {
 const F = Html5QrcodeSupportedFormats;
 const scanner = new Html5Qrcode('reader', {
   verbose: false,
+  // niente UPC_E: scambiava gli EAN-8 per UPC-E (80845263 letto 15860731). In anagrafica non ci sono UPC-E
+  formatsToSupport: [F.EAN_13, F.EAN_8, F.UPC_A, F.CODE_128, F.CODE_39],
+  experimentalFeatures: { useBarCodeDetectorIfSupported: true }
+});
+scanner.start({ facingMode: 'environment' }, { fps: 10, qrbox: { width: 280, height: 120 } }, registra)
+  .catch(e => {
+    $('errore').textContent = 'Fotocamera live non disponibile (' + (e && (e.name || e.message) || e) + '). Usa "Scatta foto del codice".';
+    $('foto').style.display = 'block';
+  });
+
+// Ripiego: foto con la fotocamera nativa del telefono, poi lettura del codice dall'immagine
+$('fotoInput').onchange = e => {
+  const f = e.target.files[0];
+  e.target.value = '';
+  if (!f) return;
+  scanner.scanFile(f, false)
+    .then(codice => { ultimoTempo = 0; registra(codice); })
+    .catch(() => toast('Codice non letto: riprova più vicino e con più luce', '#b91c1c'));
+};
+</script>
+</body>
+</html>
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Conteggio magazzino</title>
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 0 auto; padding: 12px; max-width: 520px; }
+  #reader { width: 100%; }
+  input, button { font-size: 18px; padding: 12px; width: 100%; box-sizing: border-box; margin-top: 8px; border-radius: 8px; border: 1px solid #ccc; }
+  #annulla { background: #b91c1c; color: #fff; border: 0; }
+  #annulla:disabled { background: #ddd; color: #888; }
+  #ultimo { margin-top: 8px; font-weight: 600; }
+  #stato { font-size: 14px; color: #555; margin-top: 4px; }
+  #toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); padding: 12px 18px; border-radius: 8px;
+           color: #fff; font-size: 18px; opacity: 0; transition: opacity .2s; max-width: 90%; text-align: center; pointer-events: none; }
+  #toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+  <input id="operatore" placeholder="Nome operatore">
+  <div id="reader"></div>
+  <div id="errore" style="color:#b91c1c;font-size:14px"></div>
+  <label id="foto" style="display:none">
+    <span style="display:block;text-align:center;background:#1d4ed8;color:#fff;padding:14px;border-radius:8px;margin-top:8px;font-size:18px">📷 Scatta foto del codice</span>
+    <input id="fotoInput" type="file" accept="image/*" capture="environment" style="display:none">
+  </label>
+  <input id="manuale" placeholder="Lettore barcode o codice + Invio" autocomplete="off">
+  <button id="annulla" disabled>Rimuovi ultimo registrato</button>
+  <div id="ultimo"></div>
+  <div id="stato"></div>
+  <div id="toast" role="status"></div>
+
+<script>
+// ponytail: tempi da regolare sul campo. Lo stesso codice inquadrato di continuo non viene ricontato prima di 2,5 s
+const ATTESA_STESSO = 2500, ATTESA_ALTRO = 800;
+
+// Incollare l'URL /exec del deployment Apps Script e lo stesso TOKEN di Code.gs
+const API = 'https://script.google.com/macros/s/AKfycbxvEbtEbtpLr5Q3kPAF-66nbd_Rid6VP0mpg4CTzVWjIBuHur9LbnacZtIehrfcgEqa/exec';
+const TOKEN = 'HgrnQ_nEDDeixZ2O';
+
+// Body stringa = text/plain: richiesta "semplice", niente preflight CORS verso Apps Script
+async function api(dati) {
+  const r = await fetch(API, { method: 'POST', body: JSON.stringify({ token: TOKEN, ...dati }) });
+  const j = await r.json();
+  if (!j.ok) throw new Error(j.errore);
+  return j;
+}
+
+const $ = id => document.getElementById(id);
+let prodotti = {}, coda = [], inviando = false, miei = [], conteggio = 0, ultimoCodice = '', ultimoTempo = 0;
+
+try { $('operatore').value = localStorage.getItem('operatore') || ''; } catch (e) {}
+$('operatore').onchange = e => { try { localStorage.setItem('operatore', e.target.value); } catch (_) {} };
+
+api({ azione: 'prodotti' })
+  .then(j => { prodotti = j.prodotti; aggiornaStato(); })
+  .catch(e => toast('Errore caricamento anagrafica: ' + e.message, '#b91c1c'));
+
+function toast(msg, colore) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.style.background = colore || '#15803d';
+  t.classList.add('show');
+  clearTimeout(t._h);
+  t._h = setTimeout(() => t.classList.remove('show'), 1800);
+}
+
+function aggiornaStato() {
+  const u = miei[miei.length - 1];
+  $('ultimo').textContent = u ? 'Ultimo: ' + (u.nome || u.codice) : '';
+  $('stato').textContent = `Scansioni: ${conteggio} · Da inviare: ${coda.length}`;
+  $('annulla').disabled = !miei.length;
+}
+
+function registra(codice) {
+  codice = String(codice).trim();
+  if (!codice) return;
+  const ora = Date.now();
+  if (ora - ultimoTempo < (codice === ultimoCodice ? ATTESA_STESSO : ATTESA_ALTRO)) return;
+  ultimoCodice = codice; ultimoTempo = ora;
+
+  const nome = prodotti[codice] || '';
+  const s = { id: ora.toString(36) + Math.random().toString(36).slice(2, 8), codice, nome, op: $('operatore').value };
+  miei.push(s);
+  coda.push({ tipo: 'add', s });
+  conteggio++;
+  if (navigator.vibrate) navigator.vibrate(80);
+  if (nome) toast(`${nome} Aggiunto`);
+  else toast(`Codice ${codice} non in anagrafica — Aggiunto`, '#c2410c');
+  aggiornaStato();
+  invia();
+}
+
+$('annulla').onclick = () => {
+  const s = miei.pop();
+  if (!s) return;
+  conteggio--;
+  const i = coda.findIndex(x => x.tipo === 'add' && x.s.id === s.id);
+  if (i > -1 && !(inviando && i === 0)) coda.splice(i, 1); // non ancora inviata: basta toglierla
+  else coda.push({ tipo: 'del', s });                         // già sul foglio: si cancella
+  toast(`${s.nome || s.codice} Rimosso`, '#b91c1c');
+  aggiornaStato();
+  invia();
+};
+
+// Una scrittura alla volta, in ordine. Se la rete cade si ritenta ogni 3 s senza perdere nulla
+function invia() {
+  if (inviando || !coda.length) return;
+  inviando = true;
+  const x = coda[0];
+  api(x.tipo === 'add'
+      ? { azione: 'aggiungi', id: x.s.id, codice: x.s.codice, nome: x.s.nome, op: x.s.op }
+      : { azione: 'rimuovi', id: x.s.id })
+    .then(() => { coda.shift(); inviando = false; aggiornaStato(); invia(); })
+    .catch(() => { inviando = false; aggiornaStato(); setTimeout(invia, 3000); });
+}
+
+window.addEventListener('beforeunload', e => { if (coda.length) { e.preventDefault(); e.returnValue = ''; } });
+
+// Lettore USB/Bluetooth (scrive come una tastiera e manda Invio): nessuna attesa tra letture
+$('manuale').addEventListener('keydown', e => {
+  if (e.key !== 'Enter') return;
+  ultimoTempo = 0;
+  registra(e.target.value);
+  e.target.value = '';
+});
+
+const F = Html5QrcodeSupportedFormats;
+const scanner = new Html5Qrcode('reader', {
+  verbose: false,
   formatsToSupport: [F.EAN_13, F.EAN_8, F.UPC_A, F.UPC_E, F.CODE_128, F.CODE_39],
   experimentalFeatures: { useBarCodeDetectorIfSupported: true }
 });
