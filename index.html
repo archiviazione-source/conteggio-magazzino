@@ -133,9 +133,6 @@ const scanner = new Html5Qrcode('reader', {
   formatsToSupport: [F.EAN_13, F.EAN_8, F.UPC_A, F.CODE_128, F.CODE_39],
   experimentalFeatures: { useBarCodeDetectorIfSupported: true }
 });
-// ponytail: ZOOM da regolare sul campo. Con 2x si tiene il telefono a 20-30 cm, dove il fuoco aggancia meglio
-// che da vicino (sui telefoni con più obiettivi la distanza minima di messa a fuoco è alta)
-const ZOOM = 2;
 scanner.start({ facingMode: 'environment' }, {
   fps: 15,
   // area di lettura larga quasi quanto l'inquadratura: i codici a barre sono lunghi e bassi
@@ -145,12 +142,6 @@ scanner.start({ facingMode: 'environment' }, {
   videoConstraints: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 },
                       advanced: [{ focusMode: 'continuous' }] }
 }, registra)
-  .then(() => {
-    try { // zoom facoltativo: se il telefono non lo supporta si va avanti senza
-      const c = scanner.getRunningTrackCapabilities();
-      if (c.zoom) scanner.applyVideoConstraints({ advanced: [{ zoom: Math.min(ZOOM, c.zoom.max) }] }).catch(() => {});
-    } catch (_) {}
-  })
   .catch(e => {
     $('errore').textContent = 'Fotocamera live non disponibile (' + (e && (e.name || e.message) || e) + '). Usa "Scatta foto del codice".';
     $('foto').style.display = 'block';
