@@ -163,11 +163,19 @@ detectorPronto.then(aggiornaStato, () => {});
     facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 }, advanced: [{ focusMode: 'continuous' }] } });
   await v.play();
   // Si legge l'intero fotogramma, non un riquadro. Il giro successivo parte quando il precedente è finito:
-  // su un telefono lento le letture rallentano invece di accumularsi
+  // su un telefono lento le letture rallentano invece di accumularsi.
+  // Un codice vale solo se letto uguale in CONFERME fotogrammi di fila: con immagine sfocata o mossa escono
+  // letture fantasma con cifra di controllo valida per caso (30062948 registrato come 6333832630065).
+  // ponytail: alzare a 3 se compaiono ancora codici inesistenti
+  const CONFERME = 2;
+  let candidato = '', visto = 0;
   const giro = async () => {
     try {
       const r = await detector.detect(v);
-      if (r.length) registra(piuCentrale(r, v.videoWidth, v.videoHeight));
+      const c = r.length ? piuCentrale(r, v.videoWidth, v.videoHeight) : '';
+      visto = c && c === candidato ? visto + 1 : 1;
+      candidato = c;
+      if (c && visto >= CONFERME) registra(c); // tenuto in vista: registra() lo riconta solo dopo ATTESA_STESSO
     } catch (_) {}
     setTimeout(giro, 60);
   };
