@@ -15,7 +15,17 @@
   #stato { font-size: 14px; color: #555; margin-top: 4px; }
   table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 14px; }
   th, td { text-align: left; padding: 6px 4px; border-bottom: 1px solid #e5e7eb; vertical-align: middle; }
-  td.barcode { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  td.codice b, td.codice button { display: block; }
+  button.rif { background: none; border: 0; padding: 0; font: inherit; font-weight: 700; color: #1d4ed8; text-decoration: underline; cursor: pointer; text-align: left; }
+  #overlay { position: fixed; inset: 0; background: rgba(0,0,0,.75); display: none; align-items: center; justify-content: center; padding: 16px; z-index: 10; }
+  #overlay.aperto { display: flex; }
+  #overlay .scheda { background: #fff; border-radius: 12px; padding: 12px; width: 100%; max-width: 480px; text-align: center; }
+  #overlay img { display: block; margin: 0 auto; max-width: 100%; max-height: 60vh; object-fit: contain; }
+  #overlay .attesa { padding: 60px 0; color: #555; }
+  #overlay .chiudi { margin-top: 8px; font-size: 14px; color: #555; }
+  td.codice small { color: #6b7280; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  td.foto { width: 44px; }
+  td.foto img, td.foto span { display: block; width: 40px; height: 40px; border-radius: 4px; object-fit: contain; background: #f3f4f6; }
   tr.ignoto td { color: #c2410c; }
   .cestino { font-size: 20px; padding: 4px 8px; background: none; border: 0; cursor: pointer; }
   #toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); padding: 12px 18px; border-radius: 8px;
@@ -31,10 +41,13 @@
   <div id="ultimo"></div>
   <div id="stato"></div>
   <table>
-    <thead><tr><th>Barcode</th><th>Codice</th><th>Nome</th><th></th></tr></thead>
+    <thead><tr><th></th><th>Codice / Barcode</th><th>Nome</th><th></th></tr></thead>
     <tbody id="lista"></tbody>
   </table>
   <div id="toast" role="status"></div>
+  <div id="overlay" role="dialog" aria-modal="true" aria-label="Foto prodotto">
+    <div class="scheda"><div id="ovFoto"></div><div id="ovTesto"></div><div class="chiudi">Tocca per chiudere</div></div>
+  </div>
 
 <script>
 // Lettura solo con pistola barcode (Bluetooth o USB, modalità tastiera HID): la fotocamera del telefono è stata
@@ -145,11 +158,26 @@ function aggiornaStato() {
     const nome = s.nome || prodotti[s.codice] || '';
     const tr = document.createElement('tr');
     if (!nome) tr.className = 'ignoto';
-    for (const [testo, classe] of [[s.codice, 'barcode'], [riferimenti[s.codice] || '—'], [nome || 'Non in anagrafica']]) {
-      const td = tr.insertCell();
-      td.textContent = testo;
-      if (classe) td.className = classe;
+    const tdFoto = tr.insertCell();
+    tdFoto.className = 'foto';
+    if (foto[s.codice]) {
+      const img = document.createElement('img');
+      img.src = foto[s.codice];
+      img.alt = '';
+      tdFoto.append(img);
+    } else tdFoto.append(document.createElement('span')); // riquadro grigio: senza foto o in caricamento
+    const tdCod = tr.insertCell();
+    tdCod.className = 'codice';
+    // prodotto in anagrafica: il codice è un pulsante che apre la foto grande
+    const rif = document.createElement(nome ? 'button' : 'b'), bc = document.createElement('small');
+    rif.textContent = riferimenti[s.codice] || (nome ? 'Foto' : '—');
+    if (nome) {
+      rif.className = 'rif';
+      rif.onclick = e => { e.currentTarget.blur(); apriFoto(s.codice, nome); };
     }
+    bc.textContent = s.codice;
+    tdCod.append(rif, bc);
+    tr.insertCell().textContent = nome || 'Non in anagrafica';
     const b = document.createElement('button');
     b.className = 'cestino';
     b.textContent = '🗑';
@@ -161,7 +189,46 @@ function aggiornaStato() {
     tr.insertCell().append(b);
     return tr;
   }));
+  caricaFoto();
 }
+
+// Miniature da Odoo (tramite lo script), solo per i codici in tabella, a gruppi di 50. foto[codice]: url, '' = nessuna foto
+const foto = {}, fotoInArrivo = new Set();
+function caricaFoto() {
+  const mancanti = [...new Set(miei.map(s => s.codice))].filter(c => !(c in foto) && !fotoInArrivo.has(c));
+  for (let i = 0; i < mancanti.length; i += 50) {
+    const gruppo = mancanti.slice(i, i + 50);
+    gruppo.forEach(c => fotoInArrivo.add(c));
+    api({ azione: 'foto', codici: gruppo })
+      .then(j => Object.assign(foto, j.foto))
+      .catch(() => gruppo.forEach(c => { foto[c] = ''; })) // niente foto, niente nuovi tentativi
+      .finally(() => { gruppo.forEach(c => fotoInArrivo.delete(c)); aggiornaStato(); });
+  }
+}
+
+// Overlay con la foto grande (image_512 da Odoo), chiesta solo quando si tocca il codice e tenuta per la sessione
+const fotoGrandi = {};
+async function apriFoto(codice, nome) {
+  const box = $('ovFoto');
+  $('ovTesto').textContent = `${riferimenti[codice] || ''}  ${codice}  —  ${nome}`;
+  $('overlay').classList.add('aperto');
+  const mostra = url => {
+    if (!$('overlay').classList.contains('aperto') || $('overlay').dataset.codice !== codice) return; // chiuso o cambiato
+    if (url) { const img = document.createElement('img'); img.src = url; img.alt = nome; box.replaceChildren(img); }
+    else { const d = document.createElement('div'); d.className = 'attesa'; d.textContent = 'Nessuna foto in Odoo'; box.replaceChildren(d); }
+  };
+  $('overlay').dataset.codice = codice;
+  if (codice in fotoGrandi) return mostra(fotoGrandi[codice]);
+  const d = document.createElement('div');
+  d.className = 'attesa';
+  d.textContent = 'Caricamento foto…';
+  box.replaceChildren(d);
+  try { fotoGrandi[codice] = (await api({ azione: 'fotoGrande', codice })).foto; mostra(fotoGrandi[codice]); }
+  catch (e) { box.textContent = 'Foto non disponibile: ' + e.message; }
+}
+const chiudiFoto = () => $('overlay').classList.remove('aperto');
+$('overlay').onclick = chiudiFoto;
+document.addEventListener('keydown', e => { if (e.key === 'Escape') chiudiFoto(); });
 
 // Nessuna attesa tra letture: ogni sparo è un pezzo, anche lo stesso codice più volte di fila
 function registra(codice) {
