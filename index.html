@@ -30,6 +30,12 @@
   td.codice small { color: #6b7280; font-variant-numeric: tabular-nums; white-space: nowrap; }
   #aggiorna { font-size: 16px; padding: 12px; width: 100%; margin-top: 24px; border-radius: 8px; border: 1px solid #1d4ed8; background: #fff; color: #1d4ed8; }
   #aggiorna:disabled { color: #888; border-color: #ccc; }
+  #login h2 { margin: 16px 0 4px; font-size: 20px; }
+  #lEntra { font-size: 18px; padding: 12px; width: 100%; margin-top: 12px; border-radius: 8px; border: 0; background: #283a88; color: #fff; }
+  #lEntra:disabled { background: #888; }
+  #lErrore { color: #b91c1c; margin-top: 8px; min-height: 1.2em; }
+  #chi { margin-top: 12px; text-align: center; font-size: 14px; color: #555; }
+  #esci { background: none; border: 0; padding: 0; font: inherit; color: #1d4ed8; text-decoration: underline; cursor: pointer; }
   tr.ignoto td { color: #c2410c; }
   .cestino { font-size: 20px; padding: 4px 8px; background: none; border: 0; cursor: pointer; }
   #toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); padding: 12px 18px; border-radius: 8px;
@@ -39,6 +45,14 @@
 </head>
 <body>
   <header id="banner"><img src="https://www.magazzinioz.it/web/image/website/1/logo/MagazziniOz" alt="Magazzini OZ"></header>
+  <form id="login" hidden>
+    <h2>Accesso</h2>
+    <input id="lUtente" placeholder="Utente" autocomplete="username" autocapitalize="off" required>
+    <input id="lPassword" type="password" placeholder="Password" autocomplete="current-password" required>
+    <button id="lEntra" type="submit">Entra</button>
+    <div id="lErrore" role="alert"></div>
+  </form>
+  <main id="app" hidden>
   <select id="operatore" aria-label="Operatore"><option value="">Caricamento operatori…</option></select>
   <div id="pronto"></div>
   <input id="manuale" placeholder="Codice a mano + Invio" autocomplete="off" inputmode="numeric">
@@ -50,6 +64,8 @@
     <tbody id="lista"></tbody>
   </table>
   <button id="aggiorna">Aggiorna prodotti da Odoo</button>
+  <div id="chi"><span id="chiNome"></span> · <button id="esci" type="button">Esci</button></div>
+  </main>
   <div id="toast" role="status"></div>
   <div id="overlay" role="dialog" aria-modal="true" aria-label="Foto prodotto">
     <div class="scheda"><div id="ovFoto"></div><div id="ovTesto"></div><div class="chiudi">Tocca per chiudere</div></div>
@@ -59,20 +75,71 @@
 // Lettura solo con pistola barcode (Bluetooth o USB, modalità tastiera HID): la fotocamera del telefono è stata
 // tolta il 21/11/2026 perché leggeva male (codici fantasma, fuoco da vicino). La pistola "scrive" il codice e manda Invio.
 
-// Incollare l'URL /exec del deployment Apps Script e lo stesso TOKEN di Code.gs
+// URL /exec del deployment Apps Script. Nessun segreto in questa pagina (è pubblica su GitHub Pages):
+// i dati escono solo con una sessione ottenuta da login con utente e password, verificati dallo script
 const API = 'https://script.google.com/macros/s/AKfycbxvEbtEbtpLr5Q3kPAF-66nbd_Rid6VP0mpg4CTzVWjIBuHur9LbnacZtIehrfcgEqa/exec';
-const TOKEN = 'HgrnQ_nEDDeixZ2O';
 const NUOVO = '__nuovo__'; // valore della voce "+ Aggiungi operatore"
 
-// Body stringa = text/plain: richiesta "semplice", niente preflight CORS verso Apps Script
+const $ = id => document.getElementById(id);
+let sessione = '', utente = '';
+try { sessione = localStorage.getItem('sessione') || ''; utente = localStorage.getItem('utente') || ''; } catch (e) {}
+
+// Body stringa = text/plain: richiesta "semplice", niente preflight CORS verso Apps Script.
+// Sessione scaduta o non valida: torna la schermata di accesso (le letture in coda restano e partono dopo il login)
 async function api(dati) {
-  const r = await fetch(API, { method: 'POST', body: JSON.stringify({ token: TOKEN, ...dati }) });
+  const r = await fetch(API, { method: 'POST', body: JSON.stringify({ sessione, ...dati }) });
   const j = await r.json();
-  if (!j.ok) throw new Error(j.errore);
+  if (!j.ok) {
+    const err = new Error(j.errore);
+    if (j.login) { err.login = true; mostraLogin(j.errore); }
+    throw err;
+  }
   return j;
 }
 
-const $ = id => document.getElementById(id);
+function mostraLogin(messaggio) {
+  sessione = '';
+  try { localStorage.removeItem('sessione'); } catch (_) {}
+  $('app').hidden = true;
+  $('login').hidden = false;
+  $('lErrore').textContent = messaggio || '';
+  $('lUtente').value = $('lUtente').value || utente;
+}
+
+$('login').onsubmit = async e => {
+  e.preventDefault();
+  $('lEntra').disabled = true;
+  $('lErrore').textContent = '';
+  try {
+    const j = await api({ azione: 'login', utente: $('lUtente').value, password: $('lPassword').value });
+    sessione = j.sessione; utente = j.utente;
+    try { localStorage.setItem('sessione', sessione); localStorage.setItem('utente', utente); } catch (_) {}
+    $('lPassword').value = '';
+    avvia();
+  } catch (err) {
+    $('lErrore').textContent = err.message;
+  }
+  $('lEntra').disabled = false;
+};
+
+$('esci').onclick = () => {
+  if (coda.length && !confirm(`Ci sono ${coda.length} letture non ancora inviate al foglio: se esci restano sul telefono e partono al prossimo accesso. Uscire?`)) return;
+  mostraLogin('');
+};
+
+// Dopo l'accesso: si mostra l'app e si caricano anagrafica e operatori; le letture rimaste in coda ripartono
+function avvia() {
+  $('login').hidden = true;
+  $('app').hidden = false;
+  $('chiNome').textContent = 'Accesso: ' + utente;
+  api({ azione: 'prodotti' })
+    .then(j => { prodotti = j.prodotti; riferimenti = j.riferimenti || {}; aggiornaStato(); })
+    .catch(e => { if (!e.login) toast('Errore caricamento anagrafica: ' + e.message, '#b91c1c'); });
+  api({ azione: 'operatori' })
+    .then(j => { riempiOperatori(j.operatori, opPrecedente); cambiaOperatore(); })
+    .catch(e => { if (!e.login) toast('Errore caricamento operatori: ' + e.message, '#b91c1c'); });
+  invia();
+}
 // miei = letture dell'operatore scelto (tabella), dalla più vecchia alla più recente: quelle già nel foglio
 // (anche da altri telefoni) più quelle nuove di questo telefono
 let prodotti = {}, riferimenti = {}, coda = [], inviando = false, miei = [], caricando = false;
@@ -80,10 +147,6 @@ let prodotti = {}, riferimenti = {}, coda = [], inviando = false, miei = [], car
 const operatore = () => { const v = $('operatore').value; return v === NUOVO ? '' : v; };
 let opPrecedente = '';
 try { opPrecedente = localStorage.getItem('operatore') || ''; } catch (e) {}
-
-api({ azione: 'prodotti' })
-  .then(j => { prodotti = j.prodotti; riferimenti = j.riferimenti || {}; aggiornaStato(); })
-  .catch(e => toast('Errore caricamento anagrafica: ' + e.message, '#b91c1c'));
 
 // Menu: "Scegli operatore", operatori del foglio in ordine alfabetico, "+ Aggiungi operatore"
 function riempiOperatori(elenco, scelto) {
@@ -93,10 +156,6 @@ function riempiOperatori(elenco, scelto) {
     new Option('+ Aggiungi operatore', NUOVO));
   sel.value = elenco.includes(scelto) ? scelto : '';
 }
-
-api({ azione: 'operatori' })
-  .then(j => { riempiOperatori(j.operatori, opPrecedente); cambiaOperatore(); })
-  .catch(e => toast('Errore caricamento operatori: ' + e.message, '#b91c1c'));
 
 $('operatore').onchange = async e => {
   e.target.blur(); // il menu non resta selezionato: le cifre della pistola non cambierebbero operatore
@@ -281,7 +340,8 @@ function invia() {
       ? { azione: 'aggiungi', id: x.s.id, codice: x.s.codice, nome: x.s.nome, op: x.s.op }
       : { azione: 'rimuovi', id: x.s.id })
     .then(() => { coda.shift(); inviando = false; aggiornaStato(); invia(); })
-    .catch(() => { inviando = false; aggiornaStato(); setTimeout(invia, 3000); });
+    // sessione scaduta: si aspetta il nuovo accesso (avvia() richiama invia); altrimenti si ritenta tra 3 s
+    .catch(e => { inviando = false; aggiornaStato(); if (!e.login) setTimeout(invia, 3000); });
 }
 
 window.addEventListener('beforeunload', e => { if (coda.length) { e.preventDefault(); e.returnValue = ''; } });
@@ -315,6 +375,7 @@ document.addEventListener('keydown', e => {
 });
 
 aggiornaStato();
+if (sessione) avvia(); else mostraLogin('');
 </script>
 </body>
 </html>
