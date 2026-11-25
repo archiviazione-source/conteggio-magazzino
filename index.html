@@ -10,9 +10,7 @@
   #banner { background: #283a88; margin: -12px calc(50% - 50vw) 12px; padding: 12px 16px; text-align: center; }
   #banner img { height: 48px; width: auto; display: inline-block; vertical-align: middle; }
   #pronto { margin-top: 8px; padding: 16px; border-radius: 8px; background: #dcfce7; color: #166534; font-size: 18px; text-align: center; }
-  #pronto.ferma { background: #fee2e2; color: #991b1b; }
-  input, select, #annulla { font-size: 18px; padding: 12px; width: 100%; box-sizing: border-box; margin-top: 8px; border-radius: 8px; border: 1px solid #ccc; background: #fff; }
-  #operatore.manca { border: 2px solid #dc2626; }
+  input, #annulla { font-size: 18px; padding: 12px; width: 100%; box-sizing: border-box; margin-top: 8px; border-radius: 8px; border: 1px solid #ccc; background: #fff; }
   #annulla { background: #b91c1c; color: #fff; border: 0; }
   #annulla:disabled { background: #ddd; color: #888; }
   #ultimo { margin-top: 8px; font-weight: 600; }
@@ -20,24 +18,34 @@
   table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 14px; }
   th, td { text-align: left; padding: 6px 4px; border-bottom: 1px solid #e5e7eb; vertical-align: middle; }
   td.codice b, td.codice button { display: block; }
+  td.codice small { color: #6b7280; font-variant-numeric: tabular-nums; white-space: nowrap; }
   button.rif { background: none; border: 0; padding: 0; font: inherit; font-weight: 700; color: #1d4ed8; text-decoration: underline; cursor: pointer; text-align: left; }
+  tr.ignoto td { color: #c2410c; }
+  .cestino { font-size: 20px; padding: 4px 8px; background: none; border: 0; cursor: pointer; }
   #overlay { position: fixed; inset: 0; background: rgba(0,0,0,.75); display: none; align-items: center; justify-content: center; padding: 16px; z-index: 10; }
   #overlay.aperto { display: flex; }
   #overlay .scheda { background: #fff; border-radius: 12px; padding: 12px; width: 100%; max-width: 480px; text-align: center; }
   #overlay img { display: block; margin: 0 auto; max-width: 100%; max-height: 60vh; object-fit: contain; }
   #overlay .attesa { padding: 60px 0; color: #555; }
   #overlay .chiudi { margin-top: 8px; font-size: 14px; color: #555; }
-  td.codice small { color: #6b7280; font-variant-numeric: tabular-nums; white-space: nowrap; }
   #aggiorna { font-size: 16px; padding: 12px; width: 100%; margin-top: 24px; border-radius: 8px; border: 1px solid #1d4ed8; background: #fff; color: #1d4ed8; }
   #aggiorna:disabled { color: #888; border-color: #ccc; }
-  #login h2 { margin: 16px 0 4px; font-size: 20px; }
-  #lEntra { font-size: 18px; padding: 12px; width: 100%; margin-top: 12px; border-radius: 8px; border: 0; background: #283a88; color: #fff; }
-  #lEntra:disabled { background: #888; }
-  #lErrore { color: #b91c1c; margin-top: 8px; min-height: 1.2em; }
+  form h2 { margin: 16px 0 4px; font-size: 20px; }
+  form p { margin: 4px 0; color: #555; }
+  .primario { font-size: 18px; padding: 12px; width: 100%; margin-top: 12px; border-radius: 8px; border: 0; background: #283a88; color: #fff; }
+  .primario:disabled { background: #888; }
+  .errore { color: #b91c1c; margin-top: 8px; min-height: 1.2em; }
   #chi { margin-top: 12px; text-align: center; font-size: 14px; color: #555; }
   #esci { background: none; border: 0; padding: 0; font: inherit; color: #1d4ed8; text-decoration: underline; cursor: pointer; }
-  tr.ignoto td { color: #c2410c; }
-  .cestino { font-size: 20px; padding: 4px 8px; background: none; border: 0; cursor: pointer; }
+  /* Tab Conteggio / Utenti (la seconda solo per i Super User) */
+  #tabs { display: flex; gap: 8px; margin-bottom: 4px; }
+  #tabs button { flex: 1; font-size: 16px; padding: 10px; border-radius: 8px; border: 1px solid #283a88; background: #fff; color: #283a88; }
+  #tabs button.attiva { background: #283a88; color: #fff; }
+  #nuovoUtente label { display: block; margin-top: 8px; }
+  #nuovoUtente input[type=checkbox] { width: auto; margin: 0 6px 0 0; }
+  .rigenera { font-size: 14px; padding: 6px 10px; border-radius: 6px; border: 1px solid #b91c1c; background: #fff; color: #b91c1c; }
+  .ruolo { font-size: 12px; color: #555; }
+  #tabUtenti h2 { margin: 16px 0 4px; font-size: 20px; }
   #toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); padding: 12px 18px; border-radius: 8px;
            color: #fff; font-size: 18px; opacity: 0; transition: opacity .2s; max-width: 90%; text-align: center; pointer-events: none; }
   #toast.show { opacity: 1; }
@@ -45,27 +53,61 @@
 </head>
 <body>
   <header id="banner"><img src="https://www.magazzinioz.it/web/image/website/1/logo/MagazziniOz" alt="Magazzini OZ"></header>
+
   <form id="login" hidden>
     <h2>Accesso</h2>
     <input id="lUtente" placeholder="Utente" autocomplete="username" autocapitalize="off" required>
     <input id="lPassword" type="password" placeholder="Password" autocomplete="current-password" required>
-    <button id="lEntra" type="submit">Entra</button>
-    <div id="lErrore" role="alert"></div>
+    <button id="lEntra" class="primario" type="submit">Entra</button>
+    <div id="lErrore" class="errore" role="alert"></div>
   </form>
+
+  <form id="cambio" hidden>
+    <h2>Scegli la tua password</h2>
+    <p>Stai usando la password iniziale: scegline una nuova di almeno 8 caratteri.</p>
+    <input id="cNuova" type="password" placeholder="Nuova password" autocomplete="new-password" minlength="8" required>
+    <input id="cConferma" type="password" placeholder="Ripeti la nuova password" autocomplete="new-password" minlength="8" required>
+    <button id="cSalva" class="primario" type="submit">Salva password</button>
+    <div id="cErrore" class="errore" role="alert"></div>
+  </form>
+
   <main id="app" hidden>
-  <select id="operatore" aria-label="Operatore"><option value="">Caricamento operatori…</option></select>
-  <div id="pronto"></div>
-  <input id="manuale" placeholder="Codice a mano + Invio" autocomplete="off" inputmode="numeric">
-  <button id="annulla" disabled>Rimuovi ultimo registrato</button>
-  <div id="ultimo"></div>
-  <div id="stato"></div>
-  <table>
-    <thead><tr><th>Codice / Barcode</th><th>Nome</th><th></th></tr></thead>
-    <tbody id="lista"></tbody>
-  </table>
-  <button id="aggiorna">Aggiorna prodotti da Odoo</button>
-  <div id="chi"><span id="chiNome"></span> · <button id="esci" type="button">Esci</button></div>
+    <nav id="tabs" hidden>
+      <button type="button" data-tab="conteggio" class="attiva">Conteggio</button>
+      <button type="button" data-tab="utenti">Utenti</button>
+    </nav>
+
+    <section id="tabConteggio">
+      <div id="pronto">Pronto: spara i codici con la pistola</div>
+      <input id="manuale" placeholder="Codice a mano + Invio" autocomplete="off" inputmode="numeric">
+      <button id="annulla" disabled>Rimuovi ultimo registrato</button>
+      <div id="ultimo"></div>
+      <div id="stato"></div>
+      <table>
+        <thead><tr><th>Codice / Barcode</th><th>Nome</th><th></th></tr></thead>
+        <tbody id="lista"></tbody>
+      </table>
+      <button id="aggiorna">Aggiorna prodotti da Odoo</button>
+    </section>
+
+    <section id="tabUtenti" hidden>
+      <form id="nuovoUtente">
+        <h2>Nuovo utente</h2>
+        <p>La password iniziale è <b>1</b>: al primo accesso l'utente dovrà cambiarla.</p>
+        <input id="nuNome" placeholder="Nome utente (es. Mario Rossi)" autocomplete="off" required>
+        <label><input id="nuSu" type="checkbox">Super User</label>
+        <button id="nuCrea" class="primario" type="submit">Crea utente</button>
+      </form>
+      <h2>Utenti</h2>
+      <table>
+        <thead><tr><th>Utente</th><th>Stato</th><th></th></tr></thead>
+        <tbody id="listaUtenti"></tbody>
+      </table>
+    </section>
+
+    <div id="chi"><span id="chiNome"></span> · <button id="esci" type="button">Esci</button></div>
   </main>
+
   <div id="toast" role="status"></div>
   <div id="overlay" role="dialog" aria-modal="true" aria-label="Foto prodotto">
     <div class="scheda"><div id="ovFoto"></div><div id="ovTesto"></div><div class="chiudi">Tocca per chiudere</div></div>
@@ -76,32 +118,55 @@
 // tolta il 21/11/2026 perché leggeva male (codici fantasma, fuoco da vicino). La pistola "scrive" il codice e manda Invio.
 
 // URL /exec del deployment Apps Script. Nessun segreto in questa pagina (è pubblica su GitHub Pages):
-// i dati escono solo con una sessione ottenuta da login con utente e password, verificati dallo script
+// i dati escono solo con una sessione ottenuta da login con utente e password, verificati dallo script.
+// L'operatore di ogni lettura è l'utente che ha fatto l'accesso (dal 25/11/2026 niente più menu operatori)
 const API = 'https://script.google.com/macros/s/AKfycbxvEbtEbtpLr5Q3kPAF-66nbd_Rid6VP0mpg4CTzVWjIBuHur9LbnacZtIehrfcgEqa/exec';
-const NUOVO = '__nuovo__'; // valore della voce "+ Aggiungi operatore"
 
 const $ = id => document.getElementById(id);
-let sessione = '', utente = '';
-try { sessione = localStorage.getItem('sessione') || ''; utente = localStorage.getItem('utente') || ''; } catch (e) {}
+let sessione = '', utente = '', superUser = false;
+try {
+  sessione = localStorage.getItem('sessione') || '';
+  utente = localStorage.getItem('utente') || '';
+  superUser = localStorage.getItem('su') === '1';
+} catch (e) {}
+
+// miei = letture dell'utente collegato (tabella), dalla più vecchia alla più recente: quelle già nel foglio
+// (anche da altri telefoni) più quelle nuove di questo telefono
+let prodotti = {}, riferimenti = {}, coda = [], inviando = false, miei = [], caricando = false, tab = 'conteggio';
 
 // Body stringa = text/plain: richiesta "semplice", niente preflight CORS verso Apps Script.
-// Sessione scaduta o non valida: torna la schermata di accesso (le letture in coda restano e partono dopo il login)
+// Sessione scaduta: torna la schermata di accesso. Password iniziale non ancora cambiata: torna la schermata di cambio.
+// In entrambi i casi le letture in coda restano sul telefono e partono dopo
 async function api(dati) {
   const r = await fetch(API, { method: 'POST', body: JSON.stringify({ sessione, ...dati }) });
   const j = await r.json();
   if (!j.ok) {
     const err = new Error(j.errore);
     if (j.login) { err.login = true; mostraLogin(j.errore); }
+    if (j.cambioPassword) { err.login = true; mostra('cambio'); }
     throw err;
   }
   return j;
 }
 
+// Una sola schermata visibile: login, cambio password o app
+function mostra(quale) {
+  for (const id of ['login', 'cambio', 'app']) $(id).hidden = id !== quale;
+}
+
+function salvaSessione(j) {
+  sessione = j.sessione; utente = j.utente; superUser = !!j.su;
+  try {
+    localStorage.setItem('sessione', sessione);
+    localStorage.setItem('utente', utente);
+    localStorage.setItem('su', superUser ? '1' : '0');
+  } catch (_) {}
+}
+
 function mostraLogin(messaggio) {
   sessione = '';
   try { localStorage.removeItem('sessione'); } catch (_) {}
-  $('app').hidden = true;
-  $('login').hidden = false;
+  mostra('login');
   $('lErrore').textContent = messaggio || '';
   $('lUtente').value = $('lUtente').value || utente;
 }
@@ -112,14 +177,29 @@ $('login').onsubmit = async e => {
   $('lErrore').textContent = '';
   try {
     const j = await api({ azione: 'login', utente: $('lUtente').value, password: $('lPassword').value });
-    sessione = j.sessione; utente = j.utente;
-    try { localStorage.setItem('sessione', sessione); localStorage.setItem('utente', utente); } catch (_) {}
+    salvaSessione(j);
     $('lPassword').value = '';
-    avvia();
+    if (j.cambioPassword) mostra('cambio'); else avvia();
   } catch (err) {
     $('lErrore').textContent = err.message;
   }
   $('lEntra').disabled = false;
+};
+
+$('cambio').onsubmit = async e => {
+  e.preventDefault();
+  $('cErrore').textContent = '';
+  if ($('cNuova').value !== $('cConferma').value) { $('cErrore').textContent = 'Le due password non coincidono'; return; }
+  $('cSalva').disabled = true;
+  try {
+    salvaSessione(await api({ azione: 'cambiaPassword', nuova: $('cNuova').value }));
+    $('cNuova').value = $('cConferma').value = '';
+    toast('Password salvata');
+    avvia();
+  } catch (err) {
+    if (!err.login) $('cErrore').textContent = err.message;
+  }
+  $('cSalva').disabled = false;
 };
 
 $('esci').onclick = () => {
@@ -127,72 +207,87 @@ $('esci').onclick = () => {
   mostraLogin('');
 };
 
-// Dopo l'accesso: si mostra l'app e si caricano anagrafica e operatori; le letture rimaste in coda ripartono
+// Dopo l'accesso: app, anagrafica, letture dell'utente; le letture rimaste in coda ripartono
 function avvia() {
-  $('login').hidden = true;
-  $('app').hidden = false;
-  $('chiNome').textContent = 'Accesso: ' + utente;
+  mostra('app');
+  $('chiNome').textContent = 'Accesso: ' + utente + (superUser ? ' (Super User)' : '');
+  $('tabs').hidden = !superUser;
+  apriTab('conteggio');
   api({ azione: 'prodotti' })
     .then(j => { prodotti = j.prodotti; riferimenti = j.riferimenti || {}; aggiornaStato(); })
     .catch(e => { if (!e.login) toast('Errore caricamento anagrafica: ' + e.message, '#b91c1c'); });
-  api({ azione: 'operatori' })
-    .then(j => { riempiOperatori(j.operatori, opPrecedente); cambiaOperatore(); })
-    .catch(e => { if (!e.login) toast('Errore caricamento operatori: ' + e.message, '#b91c1c'); });
+  caricaLetture();
   invia();
 }
-// miei = letture dell'operatore scelto (tabella), dalla più vecchia alla più recente: quelle già nel foglio
-// (anche da altri telefoni) più quelle nuove di questo telefono
-let prodotti = {}, riferimenti = {}, coda = [], inviando = false, miei = [], caricando = false;
 
-const operatore = () => { const v = $('operatore').value; return v === NUOVO ? '' : v; };
-let opPrecedente = '';
-try { opPrecedente = localStorage.getItem('operatore') || ''; } catch (e) {}
+// ---- Tab (Utenti solo per i Super User) ----
 
-// Menu: "Scegli operatore", operatori del foglio in ordine alfabetico, "+ Aggiungi operatore"
-function riempiOperatori(elenco, scelto) {
-  const sel = $('operatore');
-  sel.replaceChildren(new Option('— Scegli operatore —', ''),
-    ...elenco.slice().sort((a, b) => a.localeCompare(b, 'it')).map(n => new Option(n, n)),
-    new Option('+ Aggiungi operatore', NUOVO));
-  sel.value = elenco.includes(scelto) ? scelto : '';
+function apriTab(quale) {
+  tab = quale;
+  $('tabConteggio').hidden = quale !== 'conteggio';
+  $('tabUtenti').hidden = quale !== 'utenti';
+  for (const b of $('tabs').children) b.classList.toggle('attiva', b.dataset.tab === quale);
+  if (quale === 'utenti') caricaUtenti();
+}
+for (const b of $('tabs').children) b.onclick = e => { e.currentTarget.blur(); apriTab(b.dataset.tab); };
+
+async function caricaUtenti() {
+  try { mostraUtenti((await api({ azione: 'utenti' })).utenti); }
+  catch (e) { if (!e.login) toast('Errore caricamento utenti: ' + e.message, '#b91c1c'); }
 }
 
-$('operatore').onchange = async e => {
-  e.target.blur(); // il menu non resta selezionato: le cifre della pistola non cambierebbero operatore
-  if (e.target.value !== NUOVO) return cambiaOperatore();
-  const nome = (prompt('Nome del nuovo operatore') || '').trim();
-  if (!nome) { e.target.value = opPrecedente; return; }
+function mostraUtenti(elenco) {
+  $('listaUtenti').replaceChildren(...elenco.map(u => {
+    const tr = document.createElement('tr');
+    const tdNome = tr.insertCell();
+    tdNome.textContent = u.nome;
+    if (u.su) { const s = document.createElement('div'); s.className = 'ruolo'; s.textContent = 'Super User'; tdNome.append(s); }
+    tr.insertCell().textContent = !u.attivo ? 'Disattivato' : u.cambio ? 'Deve cambiare password' : 'Attivo';
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'rigenera';
+    b.textContent = 'Rigenera password';
+    b.onclick = async e => {
+      e.currentTarget.blur();
+      if (!confirm(`Riportare la password di "${u.nome}" a quella iniziale (1)?\n\nAl prossimo accesso dovrà sceglierne una nuova; i telefoni dove è collegato chiederanno di nuovo l'accesso.`)) return;
+      try { mostraUtenti((await api({ azione: 'rigeneraPassword', nome: u.nome })).utenti); toast(`Password di ${u.nome} riportata a 1`); }
+      catch (err) { if (!err.login) toast('Non riuscito: ' + err.message, '#b91c1c'); }
+    };
+    tr.insertCell().append(b);
+    return tr;
+  }));
+}
+
+$('nuovoUtente').onsubmit = async e => {
+  e.preventDefault();
+  $('nuCrea').disabled = true;
   try {
-    const j = await api({ azione: 'aggiungiOperatore', nome });
-    // se il nome c'era già (maiuscole a parte) si sceglie quello del foglio
-    riempiOperatori(j.operatori, j.operatori.find(n => n.toLowerCase() === nome.toLowerCase()));
-    toast(`Operatore ${operatore()} aggiunto`);
+    const nome = $('nuNome').value.trim();
+    mostraUtenti((await api({ azione: 'creaUtente', nome, su: $('nuSu').checked })).utenti);
+    toast(`Utente ${nome} creato: password iniziale 1`);
+    $('nuNome').value = '';
+    $('nuSu').checked = false;
   } catch (err) {
-    toast('Operatore non salvato: ' + err.message, '#b91c1c');
-    e.target.value = opPrecedente;
+    if (!err.login) toast('Utente non creato: ' + err.message, '#b91c1c');
   }
-  cambiaOperatore();
+  $('nuCrea').disabled = false;
 };
 
-// Scelto un operatore: la tabella si ricarica con tutte le sue letture già nel foglio
-async function cambiaOperatore() {
-  const op = operatore();
-  opPrecedente = op;
-  try { localStorage.setItem('operatore', op); } catch (_) {}
+// ---- Conteggio ----
+
+// Tutte le letture dell'utente collegato già nel foglio, più quelle di questo telefono ancora in coda
+async function caricaLetture() {
   miei = [];
-  caricando = !!op;
+  caricando = true;
   aggiornaStato();
-  if (!op) return;
   try {
-    const j = await api({ azione: 'scansioni', op });
-    if (op !== operatore()) return; // nel frattempo è stato scelto un altro operatore
+    const j = await api({ azione: 'scansioni' });
     const nelFoglio = new Set(j.scansioni.map(x => x.id));
     const daCancellare = new Set(coda.filter(x => x.tipo === 'del').map(x => x.s.id));
-    miei = j.scansioni.filter(x => !daCancellare.has(x.id)).map(x => ({ ...x, op }))
-      // letture di questo telefono non ancora arrivate al foglio
-      .concat(coda.filter(x => x.tipo === 'add' && x.s.op === op && !nelFoglio.has(x.s.id)).map(x => x.s));
+    miei = j.scansioni.filter(x => !daCancellare.has(x.id))
+      .concat(coda.filter(x => x.tipo === 'add' && x.s.op === utente && !nelFoglio.has(x.s.id)).map(x => x.s));
   } catch (e) {
-    toast('Errore caricamento letture: ' + e.message, '#b91c1c');
+    if (!e.login) toast('Errore caricamento letture: ' + e.message, '#b91c1c');
   }
   caricando = false;
   aggiornaStato();
@@ -208,13 +303,9 @@ function toast(msg, colore) {
 }
 
 function aggiornaStato() {
-  const manca = !operatore();
-  $('operatore').classList.toggle('manca', manca);
-  $('pronto').classList.toggle('ferma', manca);
-  $('pronto').textContent = manca ? 'Scegli l\'operatore per iniziare' : 'Pronto: spara i codici con la pistola';
   const u = miei[miei.length - 1];
   $('ultimo').textContent = u ? 'Ultimo: ' + (u.nome || prodotti[u.codice] || u.codice) : '';
-  $('stato').textContent = caricando ? 'Caricamento letture dell\'operatore…'
+  $('stato').textContent = caricando ? 'Caricamento delle tue letture…'
     : `Scansioni: ${miei.length} · Da inviare: ${coda.length}`;
   $('annulla').disabled = !miei.length;
 
@@ -225,7 +316,7 @@ function aggiornaStato() {
     if (!nome) tr.className = 'ignoto';
     const tdCod = tr.insertCell();
     tdCod.className = 'codice';
-    // prodotto in anagrafica: il codice è un pulsante che apre la foto grande
+    // prodotto in anagrafica: il codice è un pulsante che apre la foto
     const rif = document.createElement(nome ? 'button' : 'b'), bc = document.createElement('small');
     rif.textContent = riferimenti[s.codice] || (nome ? 'Foto' : '—');
     if (nome) {
@@ -253,7 +344,7 @@ async function apriFoto(codice, nome) {
   const box = $('ovFoto');
   $('ovTesto').textContent = `${riferimenti[codice] || ''}  ${codice}  —  ${nome}`;
   $('overlay').classList.add('aperto');
-  const mostra = url => {
+  const mostraFoto = url => {
     if (!$('overlay').classList.contains('aperto') || $('overlay').dataset.codice !== codice) return; // chiuso o cambiato
     if (url) { const img = document.createElement('img'); img.src = url; img.alt = nome; box.replaceChildren(img); }
     else { const d = document.createElement('div'); d.className = 'attesa'; d.textContent = 'Nessuna foto in Odoo'; box.replaceChildren(d); }
@@ -263,7 +354,7 @@ async function apriFoto(codice, nome) {
   d.className = 'attesa';
   d.textContent = 'Caricamento foto…';
   box.replaceChildren(d);
-  try { mostra((await api({ azione: 'fotoGrande', codice })).foto); }
+  try { mostraFoto((await api({ azione: 'fotoGrande', codice })).foto); }
   catch (e) { box.textContent = 'Foto non disponibile: ' + e.message; }
 }
 const chiudiFoto = () => $('overlay').classList.remove('aperto');
@@ -283,7 +374,7 @@ $('aggiorna').onclick = async e => {
     aggiornaStato();
     toast(`Prodotti aggiornati da Odoo: ${n}`);
   } catch (err) {
-    toast('Aggiornamento non riuscito: ' + err.message, '#b91c1c');
+    if (!err.login) toast('Aggiornamento non riuscito: ' + err.message, '#b91c1c');
   }
   b.disabled = false;
   b.textContent = 'Aggiorna prodotti da Odoo';
@@ -296,14 +387,14 @@ function registra(codice) {
   // cifre e nessun EAN-13 inizia per 0: si toglie lo 0, così ogni pistola scrive lo stesso codice
   if (/^0\d{12}$/.test(codice)) codice = codice.slice(1);
   if (!codice) return;
-  if (!operatore()) { // obbligatorio: la lettura non viene registrata
-    toast('Lettura NON registrata: scegli prima l\'operatore', '#b91c1c');
+  if ($('app').hidden || tab !== 'conteggio') { // fuori dal conteggio (accesso, cambio password, tab Utenti)
+    toast('Lettura NON registrata: torna alla schermata Conteggio', '#b91c1c');
     if (navigator.vibrate) navigator.vibrate([100, 60, 100]);
     return;
   }
 
   const nome = prodotti[codice] || '';
-  const s = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 8), codice, nome, op: operatore() };
+  const s = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 8), codice, nome, op: utente };
   miei.push(s);
   coda.push({ tipo: 'add', s });
   if (navigator.vibrate) navigator.vibrate(80);
@@ -331,16 +422,17 @@ $('annulla').onclick = e => {
   if (miei.length) elimina(miei[miei.length - 1]);
 };
 
-// Una scrittura alla volta, in ordine. Se la rete cade si ritenta ogni 3 s senza perdere nulla
+// Una scrittura alla volta, in ordine. Se la rete cade si ritenta ogni 3 s senza perdere nulla.
+// L'operatore lo decide lo script dalla sessione: non viene mandato
 function invia() {
-  if (inviando || !coda.length) return;
+  if (inviando || !coda.length || !sessione) return;
   inviando = true;
   const x = coda[0];
   api(x.tipo === 'add'
-      ? { azione: 'aggiungi', id: x.s.id, codice: x.s.codice, nome: x.s.nome, op: x.s.op }
+      ? { azione: 'aggiungi', id: x.s.id, codice: x.s.codice, nome: x.s.nome }
       : { azione: 'rimuovi', id: x.s.id })
     .then(() => { coda.shift(); inviando = false; aggiornaStato(); invia(); })
-    // sessione scaduta: si aspetta il nuovo accesso (avvia() richiama invia); altrimenti si ritenta tra 3 s
+    // accesso o cambio password da fare: si aspetta (avvia() richiama invia); altrimenti si ritenta tra 3 s
     .catch(e => { inviando = false; aggiornaStato(); if (!e.login) setTimeout(invia, 3000); });
 }
 
@@ -354,8 +446,7 @@ $('manuale').addEventListener('keydown', e => {
 });
 
 // Pistola: si ricevono i tasti ovunque sia il cursore, senza toccare un campo (niente tastiera a schermo).
-// Si ignora solo il campo del codice a mano. Fine codice: Invio, o Tab per le pistole impostate così.
-// Sul menu operatori i tasti vengono bloccati: le cifre farebbero scegliere un altro operatore.
+// Si ignorano i campi di testo, dove si scrive a mano. Fine codice: Invio, o Tab per le pistole impostate così.
 // ponytail: buffer azzerato dopo 500 ms senza tasti, la pistola scrive un codice intero in pochi ms
 let buffer = '', ultimoTasto = 0;
 document.addEventListener('keydown', e => {
@@ -365,11 +456,10 @@ document.addEventListener('keydown', e => {
   ultimoTasto = ora;
   if (e.key === 'Enter' || e.key === 'Tab') {
     if (!buffer) return;
-    e.preventDefault(); // niente clic su un pulsante selezionato (anche i cestini), niente salto di campo
+    e.preventDefault(); // niente clic su un pulsante selezionato (cestini, rigenera, tab), niente salto di campo
     registra(buffer);
     buffer = '';
   } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
-    if (e.target.tagName === 'SELECT') e.preventDefault();
     buffer += e.key;
   }
 });
